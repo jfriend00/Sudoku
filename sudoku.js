@@ -541,6 +541,22 @@ class Board {
     }
     
     getCellsRow(row) {
+        let results = [];
+        this.iterateRow(row, (cell, index) => {
+            results.push(cell);
+        });
+        return results;
+    }
+    
+    getCellsColumn(col) {
+        let results = [];
+        this.iterateColumn(col, (cell, index) => {
+            results.push(cell);
+        });
+        return results;
+    }
+    
+    getCellsRowSet(row) {
         let results = new SpecialSet();
         this.iterateRow(row, (cell, index) => {
             results.add(cell);
@@ -548,16 +564,31 @@ class Board {
         return results;
     }
     
-    getCellsColumn(col) {
+    getCellsColumnSet(col) {
         let results = new SpecialSet();
         this.iterateColumn(col, (cell, index) => {
             results.add(cell);
         });
         return results;
     }
-    
     // can be passed either (row, col) or (tileNum)
     getCellsTile(row, col) {
+        let results = [], tileNum;
+        
+        // see if both row,col passed or just tileNum
+        if (typeof col === "undefined") {
+            tileNum = row;
+        } else {
+            tileNum = this.getTileNum(row, col);
+        }
+        this.iterateTile(tileNum, (cell, index) => {
+            results.push(cell);
+        });
+        return results;
+    }
+    
+    // can be passed either (row, col) or (tileNum)
+    getCellsTileSet(row, col) {
         let results = new SpecialSet(), tileNum;
         
         // see if both row,col passed or just tileNum
@@ -627,7 +658,7 @@ class Board {
     getAffectedCells(row, col, options) {
         let opts = options || {};
         // collect all affected cells in a Set (so no cell is repeated)
-        let list = this.getCellsRow(row);
+        let list = this.getCellsRowSet(row);
         this.getCellsColumn(col).forEach(cell => list.add(cell));
         this.getCellsTile(this.getTileNum(row, col)).forEach(cell => list.add(cell));
         
@@ -660,9 +691,9 @@ class Board {
             return fn.call(b, cells);
         }
         // stop iteration early if any callback returns false
-        if (run("getCellsRow", row) === false) return;
-        if (run("getCellsColumn", col) === false) return;
-        run("getCellsTile", this.getTileNum(row, col));
+        if (run("getCellsRowSet", row) === false) return;
+        if (run("getCellsColumnSet", col) === false) return;
+        run("getCellsTileSet", this.getTileNum(row, col));
     }
     
     // iterate all intersecting row/col/tile cells that are not in the excludes list
@@ -1049,6 +1080,7 @@ class Board {
                     });
                 }
             });
+            console.log("pMap", pMap);
             // pMap is the same type of pMap in processHiddenSubset()
             // it tells us which cells each
             pMap.forEach((set, number) => {
@@ -1058,9 +1090,11 @@ class Board {
                     // if any other row has that same combined key
                     // create custom key
                     let key = number + ", " + set.toNumberString();
+                    console.log("key", typeNum, key);
                     if (candidates[type].has(key)) {
                         // found matching one !!!
                         // We have an x-wing pattern, but "problem here" - we need the prior row or column number
+                        console.log("Found x-wing pattern: ", key);
                     } else {
                         candidates[type].add(key);
                     }
@@ -1180,6 +1214,7 @@ do {
     b.outputPossibles();
     
     b.processSingles();
+    
     console.log(`Still ${b.countOpen()} open cells`);
     b.outputBoard();
     b.outputPossibles();
@@ -1194,6 +1229,7 @@ do {
             more = b.processHiddenSubset();
         }
     }
+    b.processXwing();
 } while (more);
 
 

@@ -297,6 +297,26 @@ class SpecialSet extends Set {
 
 }    
 
+class SpecialMap extends Map {
+    constructor(arg) {
+        super(arg);
+    }
+    
+    toArray() {
+        return Array.from(this);
+    }
+    
+    toSortedArrayNumber() {
+        return this.toArray().sort((a,b) => a - b);
+    }
+    
+    toNumberString() {
+        return this.toSortedArrayNumber().join(",");
+    }
+    
+    
+}
+
 // initialize a Map of Sets
 class MapOfSets extends Map {
     constructor(num, baseKey) {
@@ -305,6 +325,17 @@ class MapOfSets extends Map {
         let end = base + num;
         for (var i = base; i < end; i++) {
             this.set(i, new SpecialSet());
+        }
+    }
+}
+
+class MapOfMaps extends Map {
+    constructor(num, baseKey) {
+        super();
+        let base = baseKey || 0;
+        let end = base + num;
+        for (var i = base; i < end; i++) {
+            this.set(i, new SpecialMap());
         }
     }
 }
@@ -510,7 +541,7 @@ class Board {
     
     getOpenCellsRow(row) {
         let results = [];
-        this.iterateRowOpenCells(row, (cell, index) => {
+        this.iterateRowOpenCells(row, cell => {
             results.push(cell);
         });
         return results;
@@ -518,7 +549,7 @@ class Board {
     
     getOpenCellsColumn(col) {
         let results = [];
-        this.iterateColumnOpenCells(col, (cell, index) => {
+        this.iterateColumnOpenCells(col, cell => {
             results.push(cell);
         });
         return results;
@@ -542,7 +573,7 @@ class Board {
     
     getCellsRow(row) {
         let results = [];
-        this.iterateRow(row, (cell, index) => {
+        this.iterateRow(row, cell => {
             results.push(cell);
         });
         return results;
@@ -550,7 +581,7 @@ class Board {
     
     getCellsColumn(col) {
         let results = [];
-        this.iterateColumn(col, (cell, index) => {
+        this.iterateColumn(col, cell => {
             results.push(cell);
         });
         return results;
@@ -566,7 +597,7 @@ class Board {
     
     getCellsColumnSet(col) {
         let results = new SpecialSet();
-        this.iterateColumn(col, (cell, index) => {
+        this.iterateColumn(col, cell => {
             results.add(cell);
         });
         return results;
@@ -1069,10 +1100,12 @@ class Board {
         // Note: we're getting a full structure (not just open cells) so that the index into the cells
         //   array will be a column number so it can be compare to other rows and columns
         
-        let candidates = {row: new SpecialSet(), column: new SpecialSet()};
+        let possiblesCleared = 0;
+        let candidates = {row: new Map(), column: new Map()};
         this.iterateCellsByStructureAll("skipTile", (cells, type, typeNum) => {
            let pMap = new MapOfSets(boardSize, 1);
             // iterate these cells, index here is the position in the row/col
+            // typeNum is the row or column number
             cells.forEach((cell, index) => {
                 if (!cell.value) {
                     cell.possibles.forEach(p => {
@@ -1080,28 +1113,56 @@ class Board {
                     });
                 }
             });
-            console.log("pMap", pMap);
+            // console.log("pMap", pMap);
             // pMap is the same type of pMap in processHiddenSubset()
             // it tells us which cells each
-            pMap.forEach((set, number) => {
+            pMap.forEach((set, digit) => {
                 if (set.size === 2) {
-                    // FIXME: finish writing this starting here
-                    // idea: make a combined key out of value + col1 + col2 so you can see
+                    // Make a combined key out of value + pos1 + pos2 so you can see
                     // if any other row has that same combined key
                     // create custom key
-                    let key = number + ", " + set.toNumberString();
-                    console.log("key", typeNum, key);
+                    let key = digit + ":" + set.toNumberString();
                     if (candidates[type].has(key)) {
-                        // found matching one !!!
-                        // We have an x-wing pattern, but "problem here" - we need the prior row or column number
-                        console.log("Found x-wing pattern: ", key);
+                        // We found an x-wing pattern
+                        //    The variable digit is the digit we're matching
+                        //    The variable set contains the two indexes
+                        //    The variable typeNum contains the current row/col
+                        //    The variable candidates[type].get(key) contains the original current row/col
+                        // So, we need to clear all digit possibles from the other cells in the two indexes
+                        console.log(`Found x-wing pattern: value=${digit}, positions={${set.toNumberString()}}, ${candidates[type].get(key)}, ${typeNum}`);
+                        let getFnName;
+                        if (type === "row") {
+                            getFnName = "getCellsColumn";
+                        } else {
+                            getFnName = "getCellsRow";
+                        }
+                        let position1 = candidates[type].get(key);
+                        let position2 = typeNum;
+                        set.forEach(x => {
+                            let cells = this[getFnName](x);
+                            cells.forEach((cell, index) => {
+                                // if this cell is not our actual x-wing match, then clear the two
+                                // target possible values from these
+                                if (index !== position1 && index !== position2) {
+                                    // debug code, next three lines
+                                    if (cell.possibles.has(digit)) {
+                                        console.log(`Removing possible ${digit} from ${cell.getRowColStr()}`);
+                                    }
+                                    if (!cell.value && cell.possibles.delete(digit)) {
+                                        ++possiblesCleared;
+                                    }
+                                }
+                            });
+                        });
+                        // 
                     } else {
-                        candidates[type].add(key);
+                        candidates[type].set(key, typeNum);
                     }
                 }
             });
         });
         
+        return possiblesCleared;
     }
     
     countOpen() {
@@ -1198,8 +1259,8 @@ class Board {
 
 
 
-//let b = new Board(boards[2]);
-let b = new Board(xwing1);
+let b = new Board(boards[2]);
+//let b = new Board(xwing1);
 
 // keep setting possibles while we still find more values to set
 // this could be made faster by only revisiting impacted cells
@@ -1227,9 +1288,11 @@ do {
         more = b.processTileCommonRowCol();
         if (!more) {
             more = b.processHiddenSubset();
+            if (!more) {
+                more = b.processXwing();
+            }
         }
     }
-    b.processXwing();
 } while (more);
 
 

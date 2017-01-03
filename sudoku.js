@@ -328,11 +328,13 @@ class SpecialSet extends Set {
     }
     
     // return union of two sets
-    union(otherSet) {
+    union(...otherSets) {
         let newSet = new SpecialSet(this);
-        for (let key of otherSet) {
-            newSet.add(key);
-        }
+        otherSets.forEach(s => {
+            for (let key of s) {
+                newSet.add(key);
+            }
+        });
         return newSet;
     }
     
@@ -393,6 +395,34 @@ class ArrayOfSets extends Array {
             this.push(new SpecialSet());
         }
     }
+}
+
+// return an array of arrays with all combinations of num length of the original
+// array cells where order does not matter
+// got this code online: http://www.w3resource.com/javascript-exercises/javascript-function-exercise-21.php
+// This code is a little brute force in that it's making all possible permutations and 
+// then just returning the ones of desired length, but for smallish arrays, it is easy
+function makePermutations(arr, len) {
+    let resultSet = [], result, x, i;
+    
+    // shortcut special cases
+    if (arr.length < len) return [];
+    if (arr.length === len) return arr.slice(0);
+
+    for (x = 0; x < Math.pow(2, arr.length); x++) {
+        result = [];
+        for (i = 0; i < arr.length; i++) {
+            if ((x & (1 << i)) !== 0) {
+                result.push(arr[i]);
+            }
+        }
+
+        if (result.length === len) {
+            resultSet.push(result);
+        }
+    }
+
+    return resultSet;
 }
 
 // a single cell in the board
@@ -1264,13 +1294,14 @@ class Board {
         // So, here, we can look at other rows for values 3, 7 and 8 because they each occur in 2-3 cells in this row.
         // One possible algorithm is to start with the first candidate in the first row and see if you can find two
         // other rows that match it in the same column.  Then, go to the next candidate in the first row and so on...
-        
+/*
         // debugging output
         ["row", "column"].forEach(tag => {
             let arr = candidates[tag];
             console.log(`Output ${tag}:`);
             console.log(arr);
-        });
+        });  
+*/
         
         ["row", "column"].forEach(tag => {
             let arr = candidates[tag];
@@ -1285,73 +1316,24 @@ class Board {
                 arr.forEach((map, rowNum) => {
                     let testSet = map.get(cellValue);
                     if (testSet) {
-                        candidateRows.push({rowNum: rowNum, cells: map});
+                        candidateRows.push({rowNum: rowNum, cells: testSet});
                     }
                 });
                 if (candidateRows.length >= 3) {
                     // try all permutations of 3 rows to see if any qualify
-                }
-            }
-            
-            
-            
-            // for each cell value
-            for (let cellValue = 1; cellValue <= boardSize; cellValue++) {
-                // now for that cellValue, look in each row to see if we can make a swordfish pattern
-                // for that cell value
-                let rowIndex = 0;
-                let candidateCells;
-                let candidateRows = [];
-                while(true) {
-                    // FIXME: code here has a couple problems
-                    // 1) If the second candidate is a match for the first, but causes it not to match anything
-                    //    else, but a diferent second candidate could work, this will fail.
-                    // Probably the way to fix this is to just brute force try all permutations of three rows that
-                    // have candidates.  If the union of cells of any three candidates has three members, then it's 
-                    // legal.
-                    if (rowIndex >= arr.length) {
-                        // got to the end of the array and didn't find what we were looking for
-                        // need to reset
-                        if (candidateRows.length) {
-                            // start over one after our first candidate
-                            rowIndex = candidateRows[0] + 1;
-                            candidateCells = null;
-                            candidateRows = [];
-                            // loop again from scratch with rowIndex after the last first candidate we tried
-                            continue;
-                        } else {
-                            // nothing here, must be done with this cellValue
-                            break;
+                    let permutations = makePermutations(candidateRows, 3);
+                    permutations.forEach(arr => {
+                        let candidateCells = arr[0].cells.union(arr[1].cells, arr[2].cells);
+                        if (candidateCells.size === 3) {
+                            let rows = arr.map(item => item.rowNum);
+                            console.log(`found swordfish for value ${cellValue}, cells [${candidateCells.toNumberString()}] and ${tag}s [${rows.join(",")}]`);
+                            // FIXME: process the swordfish here
                         }
-                    }
-                    // get the set for the current cellValue
-                    let testSet = arr[rowIndex].get(cellValue);
-                    if (testSet) {
-                        if (!candidateCells) {
-                            // if no candidate cells yet, then just record this one as the candidate cells
-                            candidateCells = testSet.clone();   // copy of this set, so we can modify it
-                            candidateRows = [rowIndex];
-                        } else {
-                            // if a union is 3 or less, then it's a legal match
-                            // if this is the third candidate, the union must be three long
-                            let unionSet = candidateCells.union(testSet);
-                            if ((candidateRows.length === 2 && unionSet.size <= 2) || unionSet.size === 3) {
-                                candidateCells = unionSet;
-                                candidateRows.push(rowIndex);
-                            }
-                        }
-                    }
-                    ++rowIndex;
-                    if (candidateRows.length === 3) {
-                        // found a swordfish combination
-                        console.log(`found swordfish for value ${cellValue}, cells [${candidateCells.toNumberString()}] and ${tag}s [${candidateRows.join(",")}]`);
-                        // FIXME: process this swordfish now
-                        break;
-                    }
+                    })
                 }
             }
         });
-        
+            
         return possiblesCleared;
     }
     

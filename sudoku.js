@@ -216,6 +216,17 @@ let xwing1 = `
     ..5....1.
     7...28...`;
     
+let swordfish1 = `
+    ...47.6..
+    ..4...3.5
+    92.......
+    .31......
+    ...936...
+    ......28.
+    .......16
+    4.8...9..
+    ..7.52...`;
+    
 class SpecialSet extends Set {
     constructor(arg) {
         super(arg);
@@ -294,6 +305,41 @@ class SpecialSet extends Set {
         });
         return cnt;
     }
+    
+    // returns boolean whether every element in this set is in otherSet
+    isSubsetOf(otherSet) {
+        for (let key of this) {
+            if (!otherSet.has(key)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    // returns a new set of keys that are this set, but not in otherSet
+    difference(otherSet) {
+        let newSet = new SpecialSet();
+        for (let key of this) {
+            if (!otherSet.has(key)) {
+                newSet.add(key);
+            }
+        }
+        return newSet;
+    }
+    
+    // return union of two sets
+    union(otherSet) {
+        let newSet = new SpecialSet(this);
+        for (let key of otherSet) {
+            newSet.add(key);
+        }
+        return newSet;
+    }
+    
+    // return a copy of the current set
+    clone() {
+        return new SpecialSet(this);
+    }
 
 }    
 
@@ -336,6 +382,15 @@ class MapOfMaps extends Map {
         let end = base + num;
         for (var i = base; i < end; i++) {
             this.set(i, new SpecialMap());
+        }
+    }
+}
+
+class ArrayOfSets extends Array {
+    constructor(num) {
+        super();
+        for (var i = 0; i < num; i++) {
+            this.push(new SpecialSet());
         }
     }
 }
@@ -1165,6 +1220,141 @@ class Board {
         return possiblesCleared;
     }
     
+    processSwordfish() {
+        let possiblesCleared = 0;
+        
+        let candidates = {row: [], column: []};
+        this.iterateCellsByStructureAll("skipTile", (cells, type, typeNum) => {
+            // Create an array of sets for each row
+            // Each entry in the array corresponds to a possible value - 1 (0 position in the array is for cell value 1)
+            // Each entry in the array is a set of cells that contain that possible value for the row
+           let pMap = new MapOfSets(boardSize, 1);
+            // iterate these cells, position is the position in the row/col
+            // typeNum is the row or column number
+            cells.forEach((cell, position) => {
+                if (!cell.value) {
+                    cell.possibles.forEach(p => {
+                        pMap.get(p).add(position);
+                    });
+                }
+            });
+            // Now remove any sets from the map that don't have the right size
+            // The swordfish pattern only wants 2 or 3 cells per row
+            pMap.forEach((set, val) => {
+                if (set.size < 2 || set.size > 3) {
+                    // remove wrong size items from the map
+                    pMap.delete(val);
+                }
+            });
+            // typeNum is row/col number, so this is assigning a pMap object for that row/col into the array
+            candidates[type][typeNum] = pMap;
+        });
+        
+        // We're looking for 3 rows that have the same possible value in exactly 2-3 positions
+        // And there are exactly 2 other rows that also have only the same 2-3 positions
+        // If found, those 3 rows and those 3 columns form a swordfish formation and we can eliminate
+        // the possible value from the 3 target columns in all the other rows
+        //
+        // The map of sets for each row looks like this:
+        // pMap Map {
+        //  3 => Set { 3, 4 },            // cells 3 and 4 contain possible 3
+        //  7 => Set { 3, 4 },            // cells 3,4 contain possible 7
+        //  8 => Set { 0, 1, 3 },         // cells 0,1,3 contain possible 8
+        // So, in this data, anything that is present 2 or 3 times in the row is a candidate
+        // So, here, we can look at other rows for values 3, 7 and 8 because they each occur in 2-3 cells in this row.
+        // One possible algorithm is to start with the first candidate in the first row and see if you can find two
+        // other rows that match it in the same column.  Then, go to the next candidate in the first row and so on...
+        
+        // debugging output
+        ["row", "column"].forEach(tag => {
+            let arr = candidates[tag];
+            console.log(`Output ${tag}:`);
+            console.log(arr);
+        });
+        
+        ["row", "column"].forEach(tag => {
+            let arr = candidates[tag];
+            
+            // build an array of maps for each separate value so we have
+            // all the candidate rows for a given cellValue and we can then
+            // just look at all permutations of 3 of them at a time
+            
+            for (let cellValue = 1; cellValue <= boardSize; cellValue++) {
+                // array of objects of this form: {rowNum: n, cells: map}
+                let candidateRows = [];
+                arr.forEach((map, rowNum) => {
+                    let testSet = map.get(cellValue);
+                    if (testSet) {
+                        candidateRows.push({rowNum: rowNum, cells: map});
+                    }
+                });
+                if (candidateRows.length >= 3) {
+                    // try all permutations of 3 rows to see if any qualify
+                }
+            }
+            
+            
+            
+            // for each cell value
+            for (let cellValue = 1; cellValue <= boardSize; cellValue++) {
+                // now for that cellValue, look in each row to see if we can make a swordfish pattern
+                // for that cell value
+                let rowIndex = 0;
+                let candidateCells;
+                let candidateRows = [];
+                while(true) {
+                    // FIXME: code here has a couple problems
+                    // 1) If the second candidate is a match for the first, but causes it not to match anything
+                    //    else, but a diferent second candidate could work, this will fail.
+                    // Probably the way to fix this is to just brute force try all permutations of three rows that
+                    // have candidates.  If the union of cells of any three candidates has three members, then it's 
+                    // legal.
+                    if (rowIndex >= arr.length) {
+                        // got to the end of the array and didn't find what we were looking for
+                        // need to reset
+                        if (candidateRows.length) {
+                            // start over one after our first candidate
+                            rowIndex = candidateRows[0] + 1;
+                            candidateCells = null;
+                            candidateRows = [];
+                            // loop again from scratch with rowIndex after the last first candidate we tried
+                            continue;
+                        } else {
+                            // nothing here, must be done with this cellValue
+                            break;
+                        }
+                    }
+                    // get the set for the current cellValue
+                    let testSet = arr[rowIndex].get(cellValue);
+                    if (testSet) {
+                        if (!candidateCells) {
+                            // if no candidate cells yet, then just record this one as the candidate cells
+                            candidateCells = testSet.clone();   // copy of this set, so we can modify it
+                            candidateRows = [rowIndex];
+                        } else {
+                            // if a union is 3 or less, then it's a legal match
+                            // if this is the third candidate, the union must be three long
+                            let unionSet = candidateCells.union(testSet);
+                            if ((candidateRows.length === 2 && unionSet.size <= 2) || unionSet.size === 3) {
+                                candidateCells = unionSet;
+                                candidateRows.push(rowIndex);
+                            }
+                        }
+                    }
+                    ++rowIndex;
+                    if (candidateRows.length === 3) {
+                        // found a swordfish combination
+                        console.log(`found swordfish for value ${cellValue}, cells [${candidateCells.toNumberString()}] and ${tag}s [${candidateRows.join(",")}]`);
+                        // FIXME: process this swordfish now
+                        break;
+                    }
+                }
+            }
+        });
+        
+        return possiblesCleared;
+    }
+    
     countOpen() {
         let cnt = 0;
         this.iterateOpenCells((cell, row, col) => {
@@ -1259,8 +1449,8 @@ class Board {
 
 
 
-let b = new Board(boards[2]);
-//let b = new Board(xwing1);
+//let b = new Board(boards[2]);
+let b = new Board(swordfish1);
 
 // keep setting possibles while we still find more values to set
 // this could be made faster by only revisiting impacted cells
@@ -1290,6 +1480,9 @@ do {
             more = b.processHiddenSubset();
             if (!more) {
                 more = b.processXwing();
+                if (!more) {
+                   more = b.processSwordfish()
+                }
             }
         }
     }

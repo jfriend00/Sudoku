@@ -316,7 +316,7 @@ class SpecialSet extends Set {
         return true;
     }
     
-    // returns a new set of keys that are this set, but not in otherSet
+    // returns a new set of keys that are in this set, but not in otherSet
     difference(otherSet) {
         let newSet = new SpecialSet();
         for (let key of this) {
@@ -327,7 +327,7 @@ class SpecialSet extends Set {
         return newSet;
     }
     
-    // return union of two sets
+    // return union of two or more sets
     union(...otherSets) {
         let newSet = new SpecialSet(this);
         otherSets.forEach(s => {
@@ -337,6 +337,17 @@ class SpecialSet extends Set {
         });
         return newSet;
     }
+    
+    // returns a new set that contains keys that in both sets
+    intersection(otherSet) {
+        let newSet = new SpecialSet();
+        for (let key of this) {
+            if (otherSet.has(key)) {
+                newSet.add(key);
+            }
+        }
+        return newSet;
+    }    
     
     // return a copy of the current set
     clone() {
@@ -395,6 +406,11 @@ class ArrayOfSets extends Array {
             this.push(new SpecialSet());
         }
     }
+}
+
+// capitalize the first letter of the passed in string
+function leadingCap(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 }
 
 // return an array of arrays with all combinations of num length of the original
@@ -497,39 +513,60 @@ class Board {
     checkBoard() {
         let conflicts = new SpecialSet();
         
-        function check(iterateFn) {
-            let val;
-            for (let i = 0; i < boardSize; i++) {
-                let taken = {};
-                iterateFn(i, (cell, index) => {
-                    val = cell.value;
-                    if (val > 0) {
-                        if (!taken[val]) {
-                            taken[val] = [index];
-                        } else {
-                            taken[val].push(index);
-                            conflicts.add(taken[val]);
-                        }
-                    }
-                });
-            }
+        function error(cell, msg) {
+            conflicts.add(cell);
+            console.log(`checkBoard() error ${msg}, ${cell.getRowColStr()}`);
         }
         
-        check(this.iterateRow.bind(this));
-        check(this.iterateColumn.bind(this));
-        check(this.iterateTile.bind(this));
-        if (conflicts.size) {
-            console.log("Conflicts found: ", conflicts);
-        } else {
-            console.log("Valid board");
+        this.iterateCellsByStructureAll((cells, tag, num) => {
+            // check this cells array to make sure that:
+            //     no assigned values are repeated
+            //     no possibles exist for an assigned value
+            //     no cells have no value and no possibles
+            //     every value is accounted for in either an assigned value or a possible
+            let assignedVals = new SpecialSet();
+            let possibleVals = new SpecialSet();
+            
+            // collect all assignedVals and possibleVals
+            cells.forEach(cell => {
+                if (cell.value) {
+                    // check if this assigned value already used
+                    if (assignedVals.has(cell.value)) {
+                        error(cell, `assigned value ${cell.value} repeated in ${tag}`);
+                    } else {
+                        assignedVals.add(cell.value);
+                    }
+                } else {
+                    possibleVals.addTo(cell.possibles);
+                    if (cell.possibles.size === 0) {
+                        error(cell, `cell has no possibles and no assigned value`);
+                    }
+                }
+            });
+            // check for possibles and assigned values overlapping
+            let overlapVals = assignedVals.intersection(possibleVals);
+            if (overlapVals.size > 0) {
+                error(cells[0], `possibles and assigned values overlap in ${tag}:${num} (probably errant possible), ${overlapVals.toNumberString()}`);
+            }
+            
+            let unionVals = assignedVals.union(possibleVals);
+            if (unionVals.size !== boardSize) {
+                error(cells[0], `not all values accounted for in either possibles or assigned values in ${tag}:${num}, values present: ${unionsVals.toNumberString()}`);
+            }
+        });
+        
+        if (conflicts.size === 0) {
+            console.log("Board is valid");
         }
     }
     
+    // iterates a row and calls the callback once for each cell in the row
+    // it passes the callback the cell and the index within the row
     iterateRow(row, fn) {
         let startCell = row * boardSize;
         let endCell = startCell + boardSize;
-        for (let index = startCell; index < endCell; index++) {
-            if (fn(this.data[index], index) === false) {
+        for (let index = startCell, pos = 0; index < endCell; index++, pos++) {
+            if (fn(this.data[index], pos) === false) {
                 return false;
             }
         }
@@ -538,7 +575,7 @@ class Board {
 
     iterateColumn(column, fn) {
         for (let index = column, row = 0; row < boardSize; index += boardSize, row++) {
-            if (fn(this.data[index], index) === false) {
+            if (fn(this.data[index], row) === false) {
                 return false;
             }
         }
@@ -553,9 +590,9 @@ class Board {
         var index;
         
         for (var col = startColumn; col < endColumn; col++) {
-            for (var row = startRow; row < endRow; row++) {
+            for (var row = startRow, pos = 0; row < endRow; row++, pos++) {
                 index = (row * boardSize) + col;
-                if (fn(this.data[index], index) === false) {
+                if (fn(this.data[index], pos) === false) {
                     return false;
                 }
             }
@@ -1287,13 +1324,9 @@ class Board {
         //
         // The map of sets for each row looks like this:
         // pMap Map {
-        //  3 => Set { 3, 4 },            // cells 3 and 4 contain possible 3
-        //  7 => Set { 3, 4 },            // cells 3,4 contain possible 7
-        //  8 => Set { 0, 1, 3 },         // cells 0,1,3 contain possible 8
-        // So, in this data, anything that is present 2 or 3 times in the row is a candidate
-        // So, here, we can look at other rows for values 3, 7 and 8 because they each occur in 2-3 cells in this row.
-        // One possible algorithm is to start with the first candidate in the first row and see if you can find two
-        // other rows that match it in the same column.  Then, go to the next candidate in the first row and so on...
+        //  3 => Set { 3, 4 },            // A possible 3 is in cells 3 and 4
+        //  7 => Set { 3, 4 },            // A possible 7 is in cells 3,4
+        //  8 => Set { 0, 1, 3 },         // A possible 8 is in cells 0,1,3
 /*
         // debugging output
         ["row", "column"].forEach(tag => {
@@ -1326,8 +1359,13 @@ class Board {
                         let candidateCells = arr[0].cells.union(arr[1].cells, arr[2].cells);
                         if (candidateCells.size === 3) {
                             let rows = arr.map(item => item.rowNum);
-                            console.log(`found swordfish for value ${cellValue}, cells [${candidateCells.toNumberString()}] and ${tag}s [${rows.join(",")}]`);
-                            // FIXME: process the swordfish here
+                            console.log(`found swordfish for value ${cellValue}, ${tag === "row" ? "columns" : "rows"} [${candidateCells.toNumberString()}] and ${tag}s [${rows.join(",")}]`);
+                            
+                            // get opposite direction for clearing
+                            let direction = (tag === "row" ? "column" : "row");
+                            candidateCells.forEach(num => {
+                                possiblesCleared += this.clearPossibles(direction, num, cellValue, new Set(rows));                                
+                            });
                         }
                     })
                 }
@@ -1336,6 +1374,29 @@ class Board {
             
         return possiblesCleared;
     }
+    
+    // type is "row", "column" or "tile"
+    // num is the row number, column number or tile number
+    // val is the possible value to clear
+    // exceptions is a set of indexes or cells not to touch
+    clearPossibles(type, num, val, exceptions) {
+        let cnt = 0;
+        
+        // build iteration function name
+        let iterateFn = "iterate" + leadingCap(type) + "OpenCells";
+        this[iterateFn](num, (cell, index) => {
+            // if neither cell or index is in the exceptions list, then we can clear the possible
+            if (!exceptions || (!exceptions.has(cell) && !exceptions.has(index))) {
+                if (cell.possibles.delete(val)) {
+                    console.log(`clearPossibles: cell:${cell.getRowColStr()}, val:${val}`);
+                    ++cnt;
+                }
+            }
+        });
+        return cnt;
+    }
+    
+    
     
     countOpen() {
         let cnt = 0;

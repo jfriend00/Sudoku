@@ -1,3 +1,5 @@
+
+
         // http://www.stolaf.edu/people/hansonr/sudoku/12rules.htm
         // technique names
         //    naked tuples (doubles, triples, quads)
@@ -1499,38 +1501,32 @@ let b = new Board(swordfish1);
 // this could be made faster by only revisiting impacted cells
 while(b.setAllPossibles()) {}
 
-// now we have all initial possibles set
-// for each cell, look at each possible vlaue and see if it is the 
-// only cell in it's row, column or tile that can have that value
-// If so, set it's value
+let processMethods = [
+    "processNakedPairs",
+    "processTileCommonRowCol",
+    "processHiddenSubset",
+    "processXwing",
+    "processSwordfish"
+];
+
 let more = 0;
 do {
+    console.log(`Still ${b.countOpen()} open cells`);
     b.outputPossibles();
-    
     b.processSingles();
-    
-    console.log(`Still ${b.countOpen()} open cells`);
     b.outputBoard();
     b.outputPossibles();
-
-    more = b.processNakedPairs();
-    console.log(`Still ${b.countOpen()} open cells`);
-    b.outputBoard();
-    b.outputPossibles();
-    if (!more) {
-        more = b.processTileCommonRowCol();
-        if (!more) {
-            more = b.processHiddenSubset();
-            if (!more) {
-                more = b.processXwing();
-                if (!more) {
-                   more = b.processSwordfish()
-                }
-            }
-        }
+    let method;
+    for (let pIndex = 0; pIndex < processMethods.length; ++pIndex) {
+        // Call all process methods until one returns that it changed something
+        // then start back at the beginning to reproces the simpler look at possibles
+        // If we get through all of them with nothing changing, then we're done
+        method = processMethods[pIndex];
+        more = b[method]();
+        if (more) break;
     }
 } while (more);
-
-
+console.log(`Still ${b.countOpen()} open cells`);
+b.checkBoard();
 b.outputPossibles();
 

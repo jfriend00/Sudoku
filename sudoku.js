@@ -982,13 +982,8 @@ class Board {
     }
     
     // A naked pair is any two buddies that have exactly the same two possibles.  Since one of each of the two cells
-    // must have one of each of the two values, then all other cells in the common row/col/tile must not have
+    // must have one of each of the two values (because they are buddies), then all other cells in the common row/col/tile must not have
     // that value and their possibles for that value can be cleared
-    //
-    // This function on its own may leave naked possibles (cells with only one possible).
-    // Right now, it assumes that, if it returns a non-zero value, that processSingles() will get called
-    // after it in order to clean those up.  I'm still trying to decide if that is appropriate or not or
-    // if it is should clean them up itself or if it should call processSingles() itself.
     processNakedPairs() {
         let possiblesCleared = 0;
         console.log("Processing Naked Pairs");
@@ -1282,26 +1277,22 @@ class Board {
                         //    The variable typeNum contains the current row/col
                         //    The variable candidates[type].get(key) contains the original current row/col
                         // So, we need to clear all digit possibles from the other cells in the two indexes
-                        if (type === "row") {
-                            // typeNum is the row number we are iterating with the current pMap
-                            // prior pMaps for this row are in candidates[type] which for a row is candidate.row
-                            // candidates[type].get(key) is the prior row number we matched
-                            // set contains the two column numbers
-                            let row1 = candidates[type].get(key);
-                            let row2 = typeNum;
-                            let columns = Array.from(set);
-                            console.log(`Found x-wing pattern by row: value=${digit} ` +
-                                `${this.getCell(row1, columns[0]).pos()}, ${this.getCell(row1, columns[1]).pos()}, ` + 
-                                `${this.getCell(row2, columns[0]).pos()}, ${this.getCell(row2, columns[1]).pos()}`);
-                        } else {
-                            // typeNum is the col number we are iterating
-                            let col1 = candidates[type].get(key);
-                            let col2 = typeNum;
-                            let rows = Array.from(set);
-                            console.log(`Found x-wing pattern by column: value=${digit} ` +
-                                `${this.getCell(rows[0], col1).pos()}, ${this.getCell(rows[0], col2).pos()}, ` + 
-                                `${this.getCell(rows[1], col1).pos()}, ${this.getCell(rows[1], col2).pos()}`);
+                        // typeNum is the row number we are iterating with the current pMap
+                        // prior pMaps for this row are in candidates[type] which for a row is candidate.row
+                        // candidates[type].get(key) is the prior row number we matched
+                        // set contains the two column numbers
+                        let rows = [candidates[type].get(key), typeNum]
+                        let columns = Array.from(set);
+                        // if type not row, then swap row/col values
+                        if (type !== "row") {
+                            let temp = rows;
+                            rows = columns;
+                            columns = temp;
                         }
+                        console.log(`Found x-wing pattern by ${type}: value=${digit} ` +
+                            `${this.getCell(rows[0], columns[0]).pos()}, ${this.getCell(rows[0], columns[1]).pos()}, ` + 
+                            `${this.getCell(rows[1], columns[0]).pos()}, ${this.getCell(rows[1], columns[1]).pos()}`);
+                            
                         let getFnName;
                         if (type === "row") {
                             getFnName = "getCellsColumn";

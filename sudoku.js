@@ -1216,6 +1216,7 @@ class Board {
         return possiblesCleared;
     }
     
+    
     // Demo: http://www.sadmansoftware.com/sudoku/xwing.php
     // When a given value can only be in two particular same spots in each of two particular rows or columns
     // then it must be in one of the other for each and no other cells in the common rows or columns 
@@ -1229,11 +1230,24 @@ class Board {
         //   array will be a column number so it can be compare to other rows and columns
         
         let possiblesCleared = 0;
+        
+        // accumulate row and column key strings into the candidates structure
+        // so future rows/cols in the iteration can find matches with them
         let candidates = {row: new Map(), column: new Map()};
         this.iterateCellsByStructureAll("skipTile", (cells, type, typeNum) => {
-           let pMap = new MapOfSets(boardSize, 1);
-            // iterate these cells, index here is the position in the row/col
+            // cells is array of cells
+            // type is "row" or "column"
             // typeNum is the row or column number
+            
+            // There's a new MapOfSets object for each row
+            // The key in the Map is the possible value
+            // The value in the map is a set of indexes in this row that the possible value appears
+            // pMap[possibleVal] is a set of indexes that the possibleVal appears in this row
+            // the pMap data structure is only used temporarily to find pairs in a row or column
+            let pMap = new MapOfSets(boardSize, 1);
+            
+            // for all the cells in the row
+            // add each possible to the right set of the pMap
             cells.forEach((cell, index) => {
                 if (!cell.value) {
                     cell.possibles.forEach(p => {
@@ -1241,23 +1255,53 @@ class Board {
                     });
                 }
             });
+            
             // console.log("pMap", pMap);
             // pMap is the same type of pMap in processHiddenSubset()
-            // it tells us which cells each
+            // it tells us which cells each possible is in within a given row or column
+            
+            
+            
+            // cycle through the pMap to look for each possible value in this row/col 
+            // that appears in only two cells in that row/col
+            // when we find it, create a key that describes it and store that in the candidates[type] map
+            // The key is the index in the map.  The value in the map is the typeNum (row or column number)
+            // So, if we're iterating rows, the typeNum is the row number and the key contains 
+            // the possible value and the two columns numbers that contain that possible value
             pMap.forEach((set, digit) => {
+                // only pay attention to the possible value that are only contained in two cells in this row/col
                 if (set.size === 2) {
                     // Make a combined key out of value + pos1 + pos2 so you can see
                     // if any other row has that same combined key
                     // create custom key
-                    let key = digit + ":" + set.toNumberString();
+                    let key = digit + ":" + set.toNumberString();    // "1:2,3"
                     if (candidates[type].has(key)) {
                         // We found an x-wing pattern
-                        //    The variable digit is the digit we're matching
+                        //    The variable digit is the possible value we're matching
                         //    The variable set contains the two indexes
                         //    The variable typeNum contains the current row/col
                         //    The variable candidates[type].get(key) contains the original current row/col
                         // So, we need to clear all digit possibles from the other cells in the two indexes
-                        console.log(`Found x-wing pattern: value=${digit}, positions={${set.toNumberString()}}, ${candidates[type].get(key)}, ${typeNum}`);
+                        if (type === "row") {
+                            // typeNum is the row number we are iterating with the current pMap
+                            // prior pMaps for this row are in candidates[type] which for a row is candidate.row
+                            // candidates[type].get(key) is the prior row number we matched
+                            // set contains the two column numbers
+                            let row1 = candidates[type].get(key);
+                            let row2 = typeNum;
+                            let columns = Array.from(set);
+                            console.log(`Found x-wing pattern by row: value=${digit} ` +
+                                `${this.getCell(row1, columns[0]).pos()}, ${this.getCell(row1, columns[1]).pos()}, ` + 
+                                `${this.getCell(row2, columns[0]).pos()}, ${this.getCell(row2, columns[1]).pos()}`);
+                        } else {
+                            // typeNum is the col number we are iterating
+                            let col1 = candidates[type].get(key);
+                            let col2 = typeNum;
+                            let rows = Array.from(set);
+                            console.log(`Found x-wing pattern by column: value=${digit} ` +
+                                `${this.getCell(rows[0], col1).pos()}, ${this.getCell(rows[0], col2).pos()}, ` + 
+                                `${this.getCell(rows[1], col1).pos()}, ${this.getCell(rows[1], col2).pos()}`);
+                        }
                         let getFnName;
                         if (type === "row") {
                             getFnName = "getCellsColumn";
@@ -1292,7 +1336,7 @@ class Board {
         
         return possiblesCleared;
     }
-    
+
     processSwordfish() {
         let possiblesCleared = 0;
         
@@ -1610,8 +1654,8 @@ class Board {
 
 
 
-//let b = new Board(boards[2]);
-let b = new Board(xywing2);
+let b = new Board(boards[2]);
+//let b = new Board(xywing2);
 //let b = new Board(nakedPair1);
 
 // keep setting possibles while we still find more values to set

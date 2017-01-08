@@ -102,12 +102,6 @@
 const boardSize = 9;
 const tileSize = Math.sqrt(boardSize);
 
-// fill array with all possible values
-const allValues = [];
-for (let i = 0; i < boardSize; i++) {
-    allValues[i] = i + 1;
-}
-
 
 const boards = [
  [7,8,0,1,0,0,4,0,0,
@@ -229,134 +223,31 @@ let swordfish1 = `
     4.8...9..
     ..7.52...`;
     
-class SpecialSet extends Set {
-    constructor(arg) {
-        super(arg);
-    }
-   
-    addTo(iterable) {
-        iterable.forEach(item => {
-            this.add(item);
-        });
-    }
-    
-    equals(otherSet) {
-        if (otherSet.size !== this.size) return false;
-        let equals = true;
-        otherSet.forEach(item => {
-            if (!this.has(item)) {
-                equals = false;
-            }
-        });
-        return equals;
-    }
-    
-    // Get first value.  Since sets are unordered, this is useful only for getting the ONLY value in the set
-    getFirst() {
-        return this.values().next().value;
-    }
-    
-    toArray() {
-        return Array.from(this);
-    }
-    
-    toSortedArrayNumber() {
-        return this.toArray().sort((a,b) => a - b);
-    }
-    
-    toNumberString() {
-        return this.toSortedArrayNumber().join(",");
-    }
-    
-    // remove items in this set that are in the otherIterable
-    // returns a count of number of items removed
-    remove(otherIterable) {
-        let cnt = 0;
-        otherIterable.forEach(item => {
-            if (this.delete(item)) {
-                ++cnt;
-            }
-        });
-        return cnt;
-    }
-    
-    // remove the items from this set that are not in the other iterable
-    // return the  number of items removed
-    removeNonMatching(iterable) {
-        let cnt = 0;
-        // if iterable has a "has" property, then we can just use it directly
-        let other = iterable.hasOwnProperty("has") ? iterable : new SpecialSet(iterable);
-        this.forEach(item => {
-            if (!other.has(item)) {
-                this.delete(item);
-                ++cnt;
-            }
-        });
-        return cnt;
-    }
-    
-    // pass callback function that returns true to keep, false to remove
-    // The callback function is passed the element to be tested
-    removeCustom(fn) {
-        let cnt = 0;
-        this.forEach(item => {
-            if (fn(item) === false) {
-                this.delete(item);
-                cnt++;
-            }
-        });
-        return cnt;
-    }
-    
-    // returns boolean whether every element in this set is in otherSet
-    isSubsetOf(otherSet) {
-        for (let key of this) {
-            if (!otherSet.has(key)) {
-                return false;
-            }
-        }
-        return true;
-    }
-    
-    // returns a new set of keys that are in this set, but not in otherSet
-    difference(otherSet) {
-        let newSet = new SpecialSet();
-        for (let key of this) {
-            if (!otherSet.has(key)) {
-                newSet.add(key);
-            }
-        }
-        return newSet;
-    }
-    
-    // return union of two or more sets
-    union(...otherSets) {
-        let newSet = new SpecialSet(this);
-        otherSets.forEach(s => {
-            for (let key of s) {
-                newSet.add(key);
-            }
-        });
-        return newSet;
-    }
-    
-    // returns a new set that contains keys that in both sets
-    intersection(otherSet) {
-        let newSet = new SpecialSet();
-        for (let key of this) {
-            if (otherSet.has(key)) {
-                newSet.add(key);
-            }
-        }
-        return newSet;
-    }    
-    
-    // return a copy of the current set
-    clone() {
-        return new SpecialSet(this);
-    }
+let xywing1 = `
+    .9.......
+    ......678
+    ....63.5.
+    ...3.....
+    ..8.5.2.1
+    ..529.3..
+    ..9..5...
+    8...34...
+    3.2..8..4`;    
 
-}    
+// also contains triplets (5, 0), (5, 1), (5, 8) and (7, 1), (7, 3), (7, 8)    
+let xywing2 = `
+    684.7....
+    3......7.
+    ...51....
+    8..4..1..
+    .51.8.96.
+    ..7..6..2
+    ....45...
+    .9......5
+    ....2.843`;    
+    
+let SpecialSet = require('./specialset.js');    
+    
 
 class SpecialMap extends Map {
     constructor(arg) {
@@ -410,6 +301,16 @@ class ArrayOfSets extends Array {
     }
 }
 
+
+// fill array with all possible values
+const allValues = [];
+for (let i = 0; i < boardSize; i++) {
+    allValues[i] = i + 1;
+}
+const allValuesSet = new SpecialSet(allValues);
+
+
+
 // capitalize the first letter of the passed in string
 function leadingCap(str) {
     return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
@@ -425,7 +326,7 @@ function makePermutations(arr, len) {
     
     // shortcut special cases
     if (arr.length < len) return [];
-    if (arr.length === len) return arr.slice(0);
+    if (arr.length === len) return [arr.slice(0)];    // return array of a single array (one combination)
 
     for (x = 0; x < Math.pow(2, arr.length); x++) {
         result = [];
@@ -470,9 +371,11 @@ class Cell {
     
     // returns true if value was set
     // sets dirty flag on cell if possible value was cleared
-    clearPossibleValue(val) {
+    clearPossibleValue(val, nestLevel) {
         if (this.possibles.has(val)) {
-            console.log(`removing possible ${val} from ${this.getRowColStr()}`, this.possibles);
+            let level = nestLevel || 0;
+            let leading = Array(level).fill(" ").join("");
+            console.log(leading + `removing possible ${val} from ${this.pos()}`, this.possibles);
             this.possibles.delete(val);
             this.dirty = true;
             /* 
@@ -489,8 +392,14 @@ class Cell {
         return 0;
     }
     
-    getRowColStr() {
+    pos() {
         return `(${this.row}, ${this.col})`;
+    }
+    
+    setValue(val) {
+        this.value = val;
+        this.possibles.clear();
+        this.dirty = true;
     }
     
 }
@@ -517,7 +426,7 @@ class Board {
         
         function error(cell, msg) {
             conflicts.add(cell);
-            console.log(`checkBoard() error ${msg}, ${cell.getRowColStr()}`);
+            console.log(`checkBoard() error ${msg}, ${cell.pos()}`);
         }
         
         this.iterateCellsByStructureAll((cells, tag, num) => {
@@ -526,6 +435,7 @@ class Board {
             //     no possibles exist for an assigned value
             //     no cells have no value and no possibles
             //     every value is accounted for in either an assigned value or a possible
+            //     no cells have only a single possible
             let assignedVals = new SpecialSet();
             let possibleVals = new SpecialSet();
             
@@ -539,6 +449,9 @@ class Board {
                         assignedVals.add(cell.value);
                     }
                 } else {
+                    if (cell.possibles.size === 1) {
+                        error(cell, `cells has a single possible and no value`);
+                    }
                     possibleVals.addTo(cell.possibles);
                     if (cell.possibles.size === 0) {
                         error(cell, `cell has no possibles and no assigned value`);
@@ -548,12 +461,12 @@ class Board {
             // check for possibles and assigned values overlapping
             let overlapVals = assignedVals.intersection(possibleVals);
             if (overlapVals.size > 0) {
-                error(cells[0], `possibles and assigned values overlap in ${tag}:${num} (probably errant possible), ${overlapVals.toNumberString()}`);
+                error(cells[0], `possibles and assigned values overlap in ${tag}:${num} (probably errant possible value) ${overlapVals.toNumberString()}`);
             }
             
             let unionVals = assignedVals.union(possibleVals);
             if (unionVals.size !== boardSize) {
-                error(cells[0], `not all values accounted for in either possibles or assigned values in ${tag}:${num}, values present: ${unionsVals.toNumberString()}`);
+                error(cells[0], `not all values accounted for in either possibles or assigned values in ${tag}:${num}, values present: ${unionVals.toNumberString()}`);
             }
         });
         
@@ -693,6 +606,37 @@ class Board {
             results.push(cell);
         });
         return results;
+    }
+
+    // buddies are defined as any cell that shares a row, col or tile with the passsed in row,col
+    // they do not include the cell in the passed in row,col
+    // returns an array of cells
+    getOpenCellsBuddies(row, col, returnSet) {
+        let buddies = new SpecialSet();
+        buddies.addTo(this.getOpenCellsRow(row));
+        buddies.addTo(this.getOpenCellsColumn(col));
+        buddies.addTo(this.getOpenCellsTile(row, col));
+        // remove passed in cell
+        buddies.delete(this.getCell(row, col));
+        if (returnSet) {
+            return buddies;
+        } else {
+            return buddies.toArray();
+        }
+    }
+    
+    getCellsBuddies(row, col, returnSet) {
+        let buddies = new SpecialSet();
+        buddies.addTo(this.getCellsRow(row));
+        buddies.addTo(this.getCellsColumn(col));
+        buddies.addTo(this.getCellsTile(row, col));
+        // remove passed in cell
+        buddies.delete(this.getCell(row, col));
+        if (returnSet) {
+            return buddies;
+        } else {
+            return buddies.toArray();
+        }
     }
     
     getCellsRow(row) {
@@ -883,6 +827,72 @@ class Board {
         
     }
     
+    setValue(cell, val, nestLevel) {
+        let totalCellsSet = 1;
+        let level = nestLevel || 0;
+        let leading = Array(level).fill(" ").join("");
+        console.log(leading + `setValue: ${cell.pos()} to ${val}`);
+        cell.setValue(val);
+        totalCellsSet += this.clearBuddyPossibles(cell, level + 1);
+        return totalCellsSet;
+    }
+    
+    clearBuddyPossibles(cell, nestLevel) {
+        let level = nestLevel || 0;
+        let totalCellsSet = 0;
+        let val = cell.value;
+        if (!val) return;
+        
+        let waitingCells = [];
+        let cells = this.getAffectedCells(cell.row, cell.col, {openOnly: true});
+        cells.forEach(c => {
+            c.clearPossibleValue(val, level)
+            if (c.possibles.size === 1) {
+                // keep track of cells we need to set
+                waitingCells.push(c);
+            }
+        });
+        // now that we're done with our work, deal with the dirty cells 
+        // that each have only a single possible value
+        waitingCells.forEach(c => {
+            // note: This is recursive, so we have to protect against the fact that
+            // this cell might have already been set by the recursive behavior
+            if (!c.value) {
+                totalCellsSet += this.setValue(c, c.possibles.getFirst(), level + 1);
+            }
+        });
+        return totalCellsSet;        
+    }
+    
+    // pass an array or set of cells
+    // pass an array of set of possibles to clear
+    // clear all those possibles from all those cells
+    // If any cells are left with only a single possible, then process those too
+    clearListOfPossibles(cells, possibleClearList, nestLevel) {
+        let level = nestLevel || 0;
+        let waitingCells = [];
+        let totalCellsSet = 0;
+        
+        cells.forEach(c => {
+            possibleClearList.forEach(p => {
+                c.clearPossibleValue(p, level);
+            });
+            if (c.possibles.size === 1) {
+                waitingCells.push(c);
+            }
+        });
+        // now that we're done with our work, deal with the dirty cells 
+        // that each have only a single possible value
+        waitingCells.forEach(c => {
+            // note: This is recursive, so we have to protect against the fact that
+            // this cell might have already been set by the recursive behavior
+            if (!c.value) {
+                totalCellsSet += this.setValue(c, c.possibles.getFirst(), level + 1);
+            }
+        });
+        return totalCellsSet;
+    }
+    
     // get all possibles for a given cell by eliminating all values
     // already set in the row/col/tile
     getPossibles(row, col) {
@@ -895,7 +905,7 @@ class Board {
             possibles.delete(cell.value);
         });
         
-        // console.log(`possibles ${homeCell.getRowColStr()}: `, possibles);
+        // console.log(`possibles ${homeCell.pos()}: `, possibles);
         return possibles;
     }
     
@@ -908,9 +918,7 @@ class Board {
                 console.log("board error: (" + row + ", " + col + ") has no possibles and no value");
             } else if (possibles.size === 1) {
                 // if only one possible, then set the value
-                let arr = Array.from(possibles);
-                cell.value = arr[0];
-                cell.possibles.clear();
+                cell.setValue(possibles.getFirst());
                 console.log(`Found (${row}, ${col}) has only one possible value of ${cell.value}`);
                 ++valuesSet;
             }
@@ -919,8 +927,11 @@ class Board {
     }
     
     // process naked singles and hidden singles
+    // naked single is when a cell only has one possible value
+    // hidden single is when a there is no other cell in the column, row or tile that can have a given value
+    //    then that value must be in this cell
     processSingles() {
-        console.log("Procesing singles");
+        console.log("Processing naked and hidden singles");
         // Check each possible in row/col/tile to see if it is the only cell that could have that value
         // If so, set its value and clear possibles in all directions for that new value
         function run() {
@@ -928,57 +939,56 @@ class Board {
             
             this.iterateOpenCells((cell, row, col) => {
                 // This callback is called for each open cell
-                // For each of the possibles, we want to check if any other cell in the row/col/tile could have this value
-                // If not, then this cell must be assigned that value
-                let valueWasSet = false;
+                
+                // If only one possible value set it (naked single)
+                if (cell.possibles.size === 1) {
+                    console.log(`Found cell ${cell.pos()} with only one possible, setting value of ${cell.possibles.getFirst()}`);
+                    this.setValue(cell, cell.possibles.getFirst());
+                    ++valuesSet;
+                    return;
+                }
+                
+                // get each row/col/tile for this cell
                 this.iterateAffectedCellsByStructure(row, col, cells => {
-                    // cells is a Set of cells to check, current cell has been eliminated from the Set
-                    for (let possibleVal of cell.possibles) {
-                        let found = false;
-                        cells.forEach(c => {
-                            if (c.possibles.has(possibleVal)) {
-                                found = true;
-                            }
-                        });
-                        // if it was not found in any other cell in this row/col/tile
-                        // then this cell must have this value
-                        if (!found) {
-                            console.log(`Found (${row}, ${col}) is only cell that can have ${possibleVal}`);
-                            cell.value = possibleVal;
-                            cell.possibles.clear();
-                            cell.dirty = true;
-                            valueWasSet = true;
-                            ++valuesSet;
-                            // tell iteration we can stop now
-                            return false;
+                    // will get called three times (row/col/tile) with a set of cells, 
+                    // home cell has been eliminated from the set
+                    let union = new SpecialSet();
+                    cells.forEach(cell => {
+                        if (cell.value) {
+                            union.add(cell.value);
+                        } else {
+                            union.addTo(cell.possibles);
                         }
+                    });
+                    // if all values are not accounted for, then that value MUST go in this cell
+                    if (union.size !== boardSize) {
+                        if (union.size !== (boardSize - 1)) {
+                            throw new Error(`Got bad union for possibles on cell ${cell.pos()}`);
+                        }
+                        // now figure out which value is missing
+                        let missing = allValuesSet.difference(union);
+                        let val = missing.getFirst();
+                        console.log(`Found ${cell.pos()} is only cell that can have ${val}`);
+                        valuesSet += this.setValue(cell, val);
                     }
                 });
-                // if we set a value, then we need to remove that possible from all other directions
-                // and we need to revisit the other cells to see if any of the possibles we removed
-                // from here now make them the only cell that could have some value, but that 2nd
-                // step will be done in another iteration
-                if (valueWasSet) {
-                    let val = cell.value;
-                    this.iterateAffectedOpenCells(row, col, c => {
-                        c.possibles.delete(val);
-                    });
-                }
+                
             });
             return valuesSet;
         }
         // run this until no more values are changed
         while(run.call(this)) {}
         this.checkBoard();
-        
-        // look for identical naked pairs in the same row, column or tile that are "locked"
-//        this.analyzeNakedPairs();
-        
-        
     }
     
-    // allows you to eliminate possibilities from anywhere else besides the pair (in common row or col)
-    // and in the tile if the pair is within a common tile
+    // A naked pair is any two buddies that have exactly the same two possibles.  Since one of each of the two cells
+    // must have one of each of the two values, then all other cells in the common row/col/tile must not have
+    // that value and their possibles for that value can be cleared
+    //
+    // This function on its own may leave naked possibles (cells with only one possible).
+    // Right now, it assumes that, if it returns a non-zero value, that processSingles() will get called
+    // after it in order to clean those up.  I'm still trying to decide if that is appropriate or not or
+    // if it is should clean them up itself or if it should call processSingles() itself.
     processNakedPairs() {
         let possiblesCleared = 0;
         console.log("Processing Naked Pairs");
@@ -992,25 +1002,19 @@ class Board {
                         // get other cell in the pair
                         let cell2 = pairs.get(hash);
                         // found a matching pair, so remove this pair from any other possibles in this cells array
-                        console.log(`found matching pair: ${cell2.getRowColStr()}, ${cell.getRowColStr()}`, cell.possibles)
+                        console.log(`found matching pair: ${cell2.pos()}, ${cell.pos()}`, cell.possibles)
                         
                         // for each cell in the array we are processing
                         // if it's not one of the cells in the pair, then clear each of the possible values from it
-                        cells.forEach(c => {
-                            if (c !== cell && c !== cell2) {
-                                cell.possibles.forEach(val => {
-                                    possiblesCleared += c.clearPossibleValue(val);
-                                });
-                            }
-                        });
-                        
+                        let cellSet = new SpecialSet(cells);
+                        cellSet.remove([cell, cell2]);
+                        this.clearListOfPossibles(cellSet, cell.possibles);
                     } else {
                         pairs.set(hash, cell);
                     }
                 }
             });
         });
-        this.checkBoard();
         return possiblesCleared;
     }
     
@@ -1026,7 +1030,7 @@ class Board {
             // where the value of the map is an array of row and cols it can be in
             // If any item in the map only has one row or one col, then you can eliminate that
             // value from the cells outside this tile in that row/col
-            // console.log(`${cell.getRowColStr()}:`, cell.possibles);
+            // console.log(`${cell.pos()}:`, cell.possibles);
             let cells = this.getOpenCellsTile(tileNum);
             let rowMap = new Map(), colMap = new Map();
             // fill up maps with empty sets
@@ -1185,7 +1189,7 @@ class Board {
                     keepers = obj.possibles;
                     cellIndexes = cellStr.split(",").map(n => +n);
                     let cellDescription = cellIndexes.map(i => {
-                        return cells[i].getRowColStr();
+                        return cells[i].pos();
                     }).join(" ");
                     console.log(`Found hidden ${makeName(cnt)} [${keepers}] in cells ${cellDescription}`);
                     // console.log("pMap", pMap);
@@ -1201,7 +1205,7 @@ class Board {
                     possibles.forEach(p => {
                         if (!keepersSet.has(p)) {
                             possibles.delete(p);
-                            console.log(`  removing possible ${p} from ${cells[i].getRowColStr()}`)
+                            console.log(`  removing possible ${p} from ${cells[i].pos()}`)
                             ++possiblesCleared;
                         }
                     });
@@ -1270,7 +1274,7 @@ class Board {
                                 if (index !== position1 && index !== position2) {
                                     // debug code, next three lines
                                     if (cell.possibles.has(digit)) {
-                                        console.log(`Removing possible ${digit} from ${cell.getRowColStr()}`);
+                                        console.log(`Removing possible ${digit} from ${cell.pos()}`);
                                     }
                                     if (!cell.value && cell.possibles.delete(digit)) {
                                         ++possiblesCleared;
@@ -1377,6 +1381,88 @@ class Board {
         return possiblesCleared;
     }
     
+    processXYWing() {
+        // for each cell that has only two possibles
+        //     find any buddies that also has two possibles where one of the possibles overlaps
+        //     with the original cell
+        //     Then, look for a second buddy that has only two possibles, but overlaps with the other
+        //     possible from the original
+        
+        let possiblesCleared = 0;
+        
+        // try every open cell
+        this.iterateOpenCells((cell, row, col) => {
+            if (cell.possibles.size === 2) {
+                let buddies = this.getOpenCellsBuddies(row, col);
+                // filter out cells that don't have proper overlap
+                let candidates = buddies.filter(candidate => {
+                    // only allow cells with two possibles that have one in common with the original
+                    if (candidate.possibles.size !== 2) return false;
+                    return cell.possibles.intersection(candidate.possibles).size === 1;
+                });
+                // here candidates contains an array of cells with the proper overlap
+                // we need to find two that match the opposite.  
+                // The simplest way to do that is to try all permutations of two
+                let permutations = makePermutations(candidates, 2);
+                permutations.forEach(arr => {
+                    // At this point, arr contains two cells that each have one and only one possible
+                    // in common with the pivot cell.  We already know that.
+                    // Also need to show:
+                    //    Each test cell overlaps with a different possible in the pivot
+                    //    Each test cell has one possible in common with the other test cell
+                    // 
+                    // To be an XYWing pattern, 
+                    // find the possible intersection for each with the original cell
+                    let intersect1 = cell.possibles.intersection(arr[0].possibles);
+                    let intersect2 = cell.possibles.intersection(arr[1].possibles);
+                    // if the union of those intersection is 2, then each matches a different possible
+                    // from the original cell and we have the pattern
+                    if (intersect1.union(intersect2).size === 2) {
+                        // now see if the test cells have a single overlap with each other
+                        if (arr[0].possibles.intersection(arr[1].possibles).size === 1) {
+                            // what we have here may be an XYWing or it may be a hidden triplet 
+                            //    (if all three cells are in the same row/col/tile)
+                            // Note because this requires all three cells to each only have two
+                            //    possibles, this is not the generic case for hidden triplets
+                            let matches = arr.concat(cell);
+                            if (matches[0].row === matches[1].row && matches[0].row === matches[2].row) {
+                                // all in same row
+                                console.log(`found triplet in same row: ${matches[0].pos()}, ${matches[1].pos()}, ${matches[2].pos()}`)
+                            } else if (matches[0].col === matches[1].col && matches[0].col === matches[2].col) {
+                                // all in same col
+                                console.log(`found triplet in same col: ${matches[0].pos()}, ${matches[1].pos()}, ${matches[2].pos()}`)
+                            } else if (matches[0].tileNum === matches[1].tileNum && matches[0].tileNum === matches[2].tileNum) {
+                                // all in same tileNum
+                                console.log(`found triplet in same tile: ${matches[0].pos()}, ${matches[1].pos()}, ${matches[2].pos()}`)
+                            } else {
+                                // must actually be XYWing pattern
+                                console.log(`found XYWing: cells ${cell.pos()}, ${arr[0].pos()}, ${arr[1].pos()}`);
+
+                                // For each pair of the three cells
+                                //     Find common buddies
+                                //     Find the common possible value
+                                //     Eliminate that possible from the common buddies
+                                let pairs = makePermutations(matches, 2);
+                                pairs.forEach(pair => {
+                                    let c1 = pair[0];
+                                    let c2 = pair[1];
+                                    let buds1 = this.getOpenCellsBuddies(c1.row, c1.col, true);
+                                    let buds2 = this.getOpenCellsBuddies(c2.row, c2.col, true);
+                                    let cellsToClear = buds1.intersection(buds2);
+                                    let p = c1.possibles.intersection(c2.possibles);
+                                    possiblesCleared += this.clearListOfPossibles(cellsToClear, p)
+                                });
+                            }
+                        }
+                    }
+                });
+            }
+        });
+        
+        return possiblesCleared;
+        
+    }
+    
     // type is "row", "column" or "tile"
     // num is the row number, column number or tile number
     // val is the possible value to clear
@@ -1390,7 +1476,7 @@ class Board {
             // if neither cell or index is in the exceptions list, then we can clear the possible
             if (!exceptions || (!exceptions.has(cell) && !exceptions.has(index))) {
                 if (cell.possibles.delete(val)) {
-                    console.log(`clearPossibles: cell:${cell.getRowColStr()}, val:${val}`);
+                    console.log(`clearPossibles: cell:${cell.pos()}, val:${val}`);
                     ++cnt;
                 }
             }
@@ -1419,7 +1505,7 @@ class Board {
         }
     }
     
-    outputPossibles() {
+    outputPossibles(always) {
         // make an array of arrays for possibles (one array for each cell)
         // each array for each cell is blank filled and then possibles replace blanks where present
         let foundPossibles = false;
@@ -1437,7 +1523,7 @@ class Board {
             return cellData;
         });
         
-        if (!foundPossibles) {
+        if (!foundPossibles && !always) {
             console.log("Board solved - no possibles");
             return;
         }
@@ -1474,9 +1560,39 @@ class Board {
         });
         // Add top border
         outputGrid.unshift(outputGrid[3].slice());
+        
+        // Add numbers along the top
+        let topNumbers = [" "];
+        for (let i = 0; i < boardSize; i++) {
+            topNumbers.push(i + "   ");
+        }
+        outputGrid.unshift(topNumbers);
+        
+        // Add numbers and border along the left
+        let cntr = 0;
+        for (let i = 0; i < outputGrid.length; i++) {
+            // output left border
+            if (i === 0) {
+                outputGrid[i].unshift(" ");
+            } else {
+                outputGrid[i].unshift("|");
+            }
+            
+            // output row label
+            if ((i - 3) % 4 === 0) {
+                outputGrid[i].unshift(cntr);
+                ++cntr;
+            } else {
+                outputGrid[i].unshift(" ");
+            }
+            outputGrid[i].unshift(" ");
+        }
+        
+        // output the 2D array to console
         outputGrid.forEach(row => {
-            console.log("|" + row.join(""));
+            console.log(row.join(""));
         });
+        
         
 /*      
         for (let i = 0; i < boardSize; i++) {
@@ -1495,10 +1611,12 @@ class Board {
 
 
 //let b = new Board(boards[2]);
-let b = new Board(swordfish1);
+let b = new Board(xywing2);
+//let b = new Board(nakedPair1);
 
 // keep setting possibles while we still find more values to set
 // this could be made faster by only revisiting impacted cells
+b.outputPossibles(true);
 while(b.setAllPossibles()) {}
 
 let processMethods = [
@@ -1506,7 +1624,8 @@ let processMethods = [
     "processTileCommonRowCol",
     "processHiddenSubset",
     "processXwing",
-    "processSwordfish"
+    "processSwordfish",
+    "processXYWing"
 ];
 
 let more = 0;
@@ -1514,13 +1633,14 @@ do {
     console.log(`Still ${b.countOpen()} open cells`);
     b.outputPossibles();
     b.processSingles();
-    b.outputBoard();
     b.outputPossibles();
     let method;
     for (let pIndex = 0; pIndex < processMethods.length; ++pIndex) {
         // Call all process methods until one returns that it changed something
         // then start back at the beginning to reproces the simpler look at possibles
         // If we get through all of them with nothing changing, then we're done
+        b.processSingles();
+        b.outputPossibles();
         method = processMethods[pIndex];
         more = b[method]();
         if (more) break;

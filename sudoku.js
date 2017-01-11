@@ -981,6 +981,25 @@ class Board {
         return totalCellsSet;
     }
     
+    // returns a map of sets that tells you which cells each possible value is in
+    // The map is indexed by possible value
+    //     The value in the map for each possible is a set of cells
+    getPossibleMap(cells) {
+        let pMap = new Map();
+        for (let cell of cells) {
+            for (let p of cell.possibles) {
+                // lookup the possible value in the pMap for this tile and add this cell to it
+                let set = pMap.get(p);
+                if (!set) {
+                    set = new SpecialSet();
+                    pMap.set(p, set);
+                }
+                set.add(cell);
+            }
+        }
+        return pMap;
+    }
+    
     // get all possibles for a given cell by eliminating all values
     // already set in the row/col/tile
     getPossibles(row, col) {
@@ -1101,6 +1120,8 @@ class Board {
         return possiblesCleared;
     }
     
+    
+    // FIXME: I think this technique has been replaced with pointing pairs
     // Block and Column / Row Interactions
     // When you examine a block, you determine that a given possible value are all in one row or column
     //    then you can eliminate that value from elsewhere in the row or column
@@ -1163,14 +1184,8 @@ class Board {
         // we then look at which possible values are present in only 2 or 3 cells and then
         // see which of those are only one row number and/or column number
         for (let tileNum = 0; tileNum < boardSize; tileNum++) {
-            let pMap = new MapOfSets(boardSize, 1);
             let cells = this.getOpenCellsTile(tileNum);
-            for (let cell of cells) {
-                for (let p of cell.possibles) {
-                    // lookup the possible value in the pMap for this tile and add this cell to it
-                    pMap.get(p).add(cell);
-                }
-            }
+            let pMap = this.getPossibleMap(cells);
             // at this point, we know which cells each possible is present in
             // let's find the ones that are in two or three cells and look at them further
             pMap.forEach((set, p) => {
@@ -1210,6 +1225,41 @@ class Board {
     // there can be other possibles with them.  In fact, it's those other possibles that will get eliminated from
     // the matched hidden pair/triple/quad by this scheme.
     processHiddenSubset() {
+        console.log("Processing  Hidden Subset");
+        let possiblesCleared = 0;
+        // analyze all rows, columns and tiles
+        this.iterateOpenCellsByStructureAll((cells, type, typeNum) => {
+            // get map of possibles in this list of cells
+            let pMap = this.getPossibleMap(cells);
+            pMap.forEach((set, p) => {
+                // for pairs, just see if any other possible value in this cell is also only
+                // in two cells and the other cell is the same
+                if (set.size === 2) {
+                    let c1 = set.getFirst();
+                    for (let possible of c1.possibles) {
+                        if (possible !== p) {
+                            let c1Set = pMap.get(possible);
+                            if (c1Set && c1Set.size === 2 && c1Set.equals(set)) {
+                                // found a pair
+                                console.log(`found hidden pair {${p},${possible}} at ${sc(set)}`);
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    }
+    
+    // This technique is very similar to naked subsets, but instead of affecting other cells with the same row, 
+    // column or block, candidates are eliminated from the cells that hold the subset. If there are N cells, 
+    // with N candidates between them that don't appear elsewhere in the same row, column or block, then 
+    // any other candidates for those cells can be eliminated.
+    //
+    // What makes this complicated to detect is that all N candidates don't have to appear in each of the N cells
+    // as long as they don't appear anywhere else.  And, of course the reason they are called hidden subsets is that
+    // there can be other possibles with them.  In fact, it's those other possibles that will get eliminated from
+    // the matched hidden pair/triple/quad by this scheme.
+    processHiddenSubset2() {
         console.log("Processing  Hidden Subset");
         let possiblesCleared = 0;
         // analyze all rows, columns and tiles

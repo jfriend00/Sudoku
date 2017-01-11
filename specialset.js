@@ -4,19 +4,19 @@ class SpecialSet extends Set {
     }
    
     addTo(iterable) {
-        iterable.forEach(item => {
+        for (let item of iterable) {
             this.add(item);
-        });
+        }
     }
     
     equals(otherSet) {
         if (otherSet.size !== this.size) return false;
         let equals = true;
-        otherSet.forEach(item => {
+        for (let item of otherSet) {
             if (!this.has(item)) {
                 equals = false;
             }
-        });
+        }
         return equals;
     }
     
@@ -41,11 +41,11 @@ class SpecialSet extends Set {
     // returns a count of number of items removed
     remove(otherIterable) {
         let cnt = 0;
-        otherIterable.forEach(item => {
+        for (let item of otherIterable) {
             if (this.delete(item)) {
                 ++cnt;
             }
-        });
+        }
         return cnt;
     }
     
@@ -55,12 +55,12 @@ class SpecialSet extends Set {
         let cnt = 0;
         // if iterable has a "has" property, then we can just use it directly
         let other = iterable.hasOwnProperty("has") ? iterable : new SpecialSet(iterable);
-        this.forEach(item => {
+        for (let item of this) {
             if (!other.has(item)) {
                 this.delete(item);
                 ++cnt;
             }
-        });
+        }
         return cnt;
     }
     
@@ -68,12 +68,12 @@ class SpecialSet extends Set {
     // The callback function is passed the element to be tested
     removeCustom(fn) {
         let cnt = 0;
-        this.forEach(item => {
+        for (let item of this) {
             if (fn(item) === false) {
                 this.delete(item);
                 cnt++;
             }
-        });
+        }
         return cnt;
     }
     
@@ -101,22 +101,22 @@ class SpecialSet extends Set {
     // return union of two or more sets
     union(...otherSets) {
         let newSet = new SpecialSet(this);
-        otherSets.forEach(s => {
+        for (let s of otherSets) {
             for (let key of s) {
                 newSet.add(key);
             }
-        });
+        }
         return newSet;
     }
     
     // returns a new set that contains keys that in both sets
     intersection(iterable) {
         let newSet = new SpecialSet();
-        iterable.forEach(key => {
+        for (let key of iterable) {
             if (this.has(key)) {
                 newSet.add(key);
             }
-        })
+        }
         return newSet;
     }    
     

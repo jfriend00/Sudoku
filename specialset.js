@@ -109,7 +109,7 @@ class SpecialSet extends Set {
         return newSet;
     }
     
-    // returns a new set that contains keys that in both sets
+    // returns a new set that contains keys that are in both sets
     intersection(iterable) {
         let newSet = new SpecialSet();
         for (let key of iterable) {

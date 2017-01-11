@@ -1,4 +1,4 @@
-
+const utils = require('./utils.js');
 
         // http://www.stolaf.edu/people/hansonr/sudoku/12rules.htm
         // technique names
@@ -1231,23 +1231,53 @@ class Board {
         this.iterateOpenCellsByStructureAll((cells, type, typeNum) => {
             // get map of possibles in this list of cells
             let pMap = this.getPossibleMap(cells);
+            // iterate for each possible that exists in this row/col/tile
+            let found = new SpecialSet();
             pMap.forEach((set, p) => {
-                // for pairs, just see if any other possible value in this cell is also only
-                // in two cells and the other cell is the same
-                if (set.size === 2) {
+                let n = set.size;
+                // skip possible values that don't have the right number of cells
+                // or have already been part of a hidden subset in this group of cells
+                if (n >= 2 && n <= 4 && !found.has(p)) {
+                    let matchValues = new SpecialSet([p]);
+                    // now the goal is to go through each of the possibles on this cell and 
+                    // see if they all exist only on the same other n cells
+                    // we can start with any cell in the set because if this is a match, the possible have to be on all those cells
                     let c1 = set.getFirst();
                     for (let possible of c1.possibles) {
                         if (possible !== p) {
-                            let c1Set = pMap.get(possible);
-                            if (c1Set && c1Set.size === 2 && c1Set.equals(set)) {
-                                // found a pair
-                                console.log(`found hidden pair {${p},${possible}} at ${sc(set)}`);
+                            let testSet = pMap.get(possible);
+                            // if this other possible is on the exact same set of cells, then count it
+                            if (testSet && testSet.equals(set)) {
+                                matchValues.add(possible);
+                                // if we found enough matches, then we're done
+                                if (matchValues.size === n) {
+                                    found.add(matchValues);
+                                    console.log(`found hidden ${utils.makeQtyStr(n)} {${matchValues.toNumberString()}} at ${sc(set)}`);
+                                    // at this point, we can clear the other possibles from the matched cells 
+                                    // that are not part of the hidden set
+                                    for (let cell of set) {
+                                        let removing = cell.possibles.difference(matchValues);
+                                        if (removing.size) {
+                                            ++possiblesCleared;
+                                            console.log(` removing possibles {${removing.toNumberString()}} from ${cell.pos()}`)
+                                            // can just modify possibles without checking for only one possible left
+                                            // because by definition, this is a pair, triple or quad so always at least 2 possibles left
+                                            cell.possibles.removeNonMatching(matchValues);
+                                        }
+                                    }
+                                    // Interesting note: After you find a hidden subset and remove the other possibles on it, it 
+                                    // becomes a naked subset so the naked subset code will get called to see if further possibles
+                                    // can be cleared
+                                    
+                                    break;
+                                }
                             }
                         }
                     }
                 }
             });
         });
+        return possiblesCleared;
     }
     
     // This technique is very similar to naked subsets, but instead of affecting other cells with the same row, 
@@ -1843,6 +1873,7 @@ class Board {
 //let b = new Board(nakedPair1);
 //let b = new Board(hiddenTriplet);
 //let b = new Board(mypuzzleorg01022017veryhard);
+//let b = new Board(hiddenQuad);
 let b = new Board(mypuzzleorg01032017veryhard);    
 
 // keep setting possibles while we still find more values to set

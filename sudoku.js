@@ -368,39 +368,6 @@ function showCellCollection(collection) {
 // shortcut definition
 let sc = showCellCollection;
 
-// capitalize the first letter of the passed in string
-function leadingCap(str) {
-    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
-}
-
-// return an array of arrays with all combinations of num length of the original
-// array cells where order does not matter
-// got this code online: http://www.w3resource.com/javascript-exercises/javascript-function-exercise-21.php
-// This code is a little brute force in that it's making all possible permutations and 
-// then just returning the ones of desired length, but for smallish arrays, it is easy
-function makePermutations(arr, len) {
-    let resultSet = [], result, x, i;
-    
-    // shortcut special cases
-    if (arr.length < len) return [];
-    if (arr.length === len) return [arr.slice(0)];    // return array of a single array (one combination)
-
-    for (x = 0; x < Math.pow(2, arr.length); x++) {
-        result = [];
-        for (i = 0; i < arr.length; i++) {
-            if ((x & (1 << i)) !== 0) {
-                result.push(arr[i]);
-            }
-        }
-
-        if (result.length === len) {
-            resultSet.push(result);
-        }
-    }
-
-    return resultSet;
-}
-
 // a single cell in the board
 class Cell {
     constructor(val, row, col, index, board) {
@@ -457,6 +424,14 @@ class Cell {
         this.value = val;
         this.possibles.clear();
         this.dirty = true;
+    }
+    
+    static outputCellList(list) {
+        let output = [];
+        for (let cell of list) {
+            output.push(cell.pos());
+        }
+        return output.join(" ");
     }
     
 }
@@ -1174,6 +1149,127 @@ class Board {
     //
     // The basic idea for this algorithm is as follows:
     // For every row/col/tile
+    //    Make possible map for each possible value (tells you which cells a given possible is in)
+    //    For each possible value in the map where the set of cells is 2, 3 or 4 long:
+    //        Test the current set to see if it's already a pair, triple or quad
+    //        Create a set of the other cells and use it to then make all the combinations 
+    //            of triples or quads you can with the original set of cells and then
+    //            test each one to see if it's a legal triple or quad
+    processHiddenSubset() {
+        console.log("Processing  Hidden Subset");
+        let possiblesCleared = 0;
+        // analyze all rows, columns and tiles
+        this.iterateOpenCellsByStructureAll((cells, type, typeNum) => {
+            // get map of possibles in this list of cells
+            let pMap = this.getPossibleMap(cells);
+            if (cells.length < 3) return;
+            pMap.forEach((set, p) => {
+                // if there are more than 4 cells this value is in, it can't be a key value in a pair, triple or quad
+                if (set.size < 2 || set.size > 4) return;
+                // make a set of open cells not in the original set to be considered for triples or quads
+                let otherCellSet = new SpecialSet(cells);
+                otherCellSet.remove(set);
+
+                // test directly to see if it is a pair, triple or quad already (based on it's length)
+                possiblesCleared += testSubset(set, otherCellSet);
+                
+                // test for manufactured triples
+                possiblesCleared += makeSubsets(set, otherCellSet, 3);
+                
+                // test for manufactured quads
+                possiblesCleared += makeSubsets(set, otherCellSet, 4);
+            });
+        });
+        
+        // test for triple and quad
+        function makeSubsets(startingSet, otherCellSet, desiredSize) {
+            let cnt = 0;
+            // calc how much we need to add to the existing set
+            var deltaSize = desiredSize - startingSet.size;
+            // if nothing to add, then there's nothing new to manufacture so nothing to do here
+            // set set by itself has already been tested
+            if (deltaSize > 0) {
+                // test for a quad by trying all combinations of two other cells with this
+                let combos = utils.makeCombinations(Array.from(otherCellSet), deltaSize);
+                for (let cellsToTry of combos) {
+                    let candidateSet = new SpecialSet(startingSet);
+                    candidateSet.addTo(cellsToTry);
+                    let otherSet = new SpecialSet(otherCellSet);
+                    otherSet.remove(cellsToTry);
+                    cnt += testSubset(candidateSet, otherSet);
+                }                    
+            }
+            return cnt;
+        }
+        
+        function testSubset(candidateSet, otherCellSet) {
+            let cnt = 0;
+            // the algorithm here is to get the union of all possibles in the otherCellSet
+            // eliminate those from each of the candidates
+            // make sure you have at least two possibles left in each candidate
+            // Then take the union of all possibles in the candidates and see if it matches the candidateSet.size
+            // So you have N unique possibles in N cells that do not appear anywhere in the row/col/tile outside of those N cells
+            let otherUnion = new SpecialSet();
+            let candidateUnion = new SpecialSet();
+            
+            // get union of other cell possibles
+            for (let cell of otherCellSet) {
+                otherUnion.addTo(cell.possibles);
+            }
+            
+            // iterate through each cell in the candidateSet to collect the candidateUnion
+            // we also want to figure out if this set is naked or not
+            // It's naked if there are no extra possibles
+            let isHidden = false;
+            for (let cell of candidateSet) {
+                // set what is in our candidate cell, that is not in the otherUnion
+                let diff = cell.possibles.difference(otherUnion);
+                if (cell.possibles.intersection(otherUnion).size) {
+                    // since we found some overlap with the otherUnion, this is a hidden pair/triple/quad
+                    isHidden = true;
+                }
+                
+                if (diff.size < 2) {
+                    // have to be at least two common possibles in each cell
+                    return cnt;
+                }
+                // accumulate the durable possibles from our candidate cells
+                candidateUnion.addTo(diff);
+            }
+            // See if we have N possibles contained only in N cells
+            if (candidateUnion.size === candidateSet.size) {
+                if (isHidden) {
+                    console.log(`found hidden subset ${utils.makeQtyStr(candidateSet.size)} with values {${candidateUnion.toNumberString()}} in ${Cell.outputCellList(candidateSet)}`);
+                    // clear possibles in the candidateSet that are in the otherUnion
+                    for (let cell of candidateSet) {
+                        let removing = cell.possibles.intersection(otherUnion);
+                        if (removing.size) {
+                            console.log(` removing possibles {${removing.toNumberString()}} from ${cell.pos()}`)
+                            cnt += cell.possibles.remove(removing);
+                        }
+                    }
+                } else {
+                    console.log(`found already processed naked ${utils.makeQtyStr(candidateSet.size)} with values {${candidateUnion.toNumberString()}} in ${Cell.outputCellList(candidateSet)}`);
+                }
+            }
+            return cnt;
+        }
+        
+        return possiblesCleared;
+    }
+    
+    // This technique is very similar to naked subsets, but instead of affecting other cells with the same row, 
+    // column or block, candidates are eliminated from the cells that hold the subset. If there are N cells, 
+    // with N candidates between them that don't appear elsewhere in the same row, column or block, then 
+    // any other candidates for those cells can be eliminated.
+    //
+    // What makes this complicated to detect is that all N candidates don't have to appear in each of the N cells
+    // as long as they don't appear anywhere else.  And, of course the reason they are called hidden subsets is that
+    // there can be other possibles with them.  In fact, it's those other possibles that will get eliminated from
+    // the matched hidden pair/triple/quad by this scheme.
+    //
+    // The basic idea for this algorithm is as follows:
+    // For every row/col/tile
     //    Get a pMap that tells you which cells each possible is in in the unit
     //    For each possible in the unit, see if it is present in 2 to 4 cells 
     //    If so, create a matchValues set and put this possible in it
@@ -1183,7 +1279,10 @@ class Board {
     //        If so, add it to the matchValues
     //        If we've found enough matches, then we have a hidden (or naked pair)
     //        Clear excess possibles from the matched cells
-    processHiddenSubset() {
+    // 
+    // FIXME: A hidden triple or quad does not need to contain all of the values
+    // That is why we don't currently detect the quad in the hiddenQuad puzzle
+    processHiddenSubsetx() {
         console.log("Processing  Hidden Subset");
         let possiblesCleared = 0;
         // analyze all rows, columns and tiles
@@ -1191,16 +1290,18 @@ class Board {
             // get map of possibles in this list of cells
             let pMap = this.getPossibleMap(cells);
             // iterate for each possible that exists in this row/col/tile
-            let found = new SpecialSet();
             pMap.forEach((set, p) => {
                 let n = set.size;
                 // skip possible values that don't have the right number of cells
                 // or have already been part of a hidden subset in this group of cells
-                if (n >= 2 && n <= 4 && !found.has(p)) {
+                if (n >= 2 && n <= 4) {
                     let matchValues = new SpecialSet([p]);
                     // now the goal is to go through each of the possibles on this cell and 
                     // see if they all exist only on the same other n cells
                     // we can start with any cell in the set because if this is a match, the possible have to be on all those cells
+                    
+                    // Because not all cells have to have all possibles involved in the set, we're going to have to 
+                    // test all the possibles
                     let c1 = set.getFirst();
                     for (let possible of c1.possibles) {
                         if (possible !== p) {
@@ -1211,7 +1312,6 @@ class Board {
                                 // if we found enough matches, then we're done
                                 if (matchValues.size === n) {
                                     // record that we've already processed these possibles so we don't find the other ends of the match
-                                    found.add(matchValues);
                                     console.log(`found hidden ${utils.makeQtyStr(n)} {${matchValues.toNumberString()}} at ${sc(set)}`);
                                     // at this point, we can clear the other possibles from the matched cells 
                                     // that are not part of the hidden set
@@ -1410,7 +1510,7 @@ class Board {
             
             // build an array of maps for each separate value so we have
             // all the candidate rows for a given cellValue and we can then
-            // just look at all permutations of 3 of them at a time
+            // just look at all combinations of 3 of them at a time
             
             for (let cellValue = 1; cellValue <= boardSize; cellValue++) {
                 // array of objects of this form: {rowNum: n, cells: map}
@@ -1422,9 +1522,9 @@ class Board {
                     }
                 });
                 if (candidateRows.length >= 3) {
-                    // try all permutations of 3 rows to see if any qualify
-                    let permutations = makePermutations(candidateRows, 3);
-                    permutations.forEach(arr => {
+                    // try all combinations of 3 rows to see if any qualify
+                    let combinations = utils.makeCombinations(candidateRows, 3);
+                    combinations.forEach(arr => {
                         let candidateCells = arr[0].cells.union(arr[1].cells, arr[2].cells);
                         if (candidateCells.size === 3) {
                             let rows = arr.map(item => item.rowNum);
@@ -1465,9 +1565,9 @@ class Board {
                 });
                 // here candidates contains an array of cells with the proper overlap
                 // we need to find two that match the opposite.  
-                // The simplest way to do that is to try all permutations of two
-                let permutations = makePermutations(candidates, 2);
-                permutations.forEach(arr => {
+                // The simplest way to do that is to try all combinations of two
+                let combinations = utils.makeCombinations(candidates, 2);
+                combinations.forEach(arr => {
                     // At this point, arr contains two cells that each have one and only one possible
                     // in common with the pivot cell.  We already know that.
                     // Also need to show:
@@ -1532,7 +1632,7 @@ class Board {
         let cnt = 0;
         
         // build iteration function name
-        let iterateFn = "iterate" + leadingCap(type) + "OpenCells";
+        let iterateFn = "iterate" + utils.leadingCap(type) + "OpenCells";
         this[iterateFn](num, (cell, index) => {
             // if neither cell or index is in the exceptions list, then we can clear the possible
             if (!exceptions || (!exceptions.has(cell) && !exceptions.has(index))) {
@@ -1681,8 +1781,8 @@ class Board {
 //let b = new Board(nakedPair1);
 //let b = new Board(hiddenTriplet);
 //let b = new Board(mypuzzleorg01022017veryhard);
-//let b = new Board(hiddenQuad);
-let b = new Board(mypuzzleorg01032017veryhard);    
+let b = new Board(hiddenQuad);
+//let b = new Board(mypuzzleorg01032017veryhard);    
 
 // keep setting possibles while we still find more values to set
 // this could be made faster by only revisiting impacted cells

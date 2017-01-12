@@ -1121,60 +1121,6 @@ class Board {
         return possiblesCleared;
     }
     
-    
-    // FIXME: I think this technique has been replaced with pointing pairs
-    // Block and Column / Row Interactions
-    // When you examine a block, you determine that a given possible value are all in one row or column
-    //    then you can eliminate that value from elsewhere in the row or column
-    processTileCommonRowCol() {
-        console.log("Processing Common Row/Col");
-        let possiblesCleared = 0;
-        // for each tile
-        for (let tileNum = 0; tileNum < boardSize; tileNum++) {
-            // For each possible value in the tile, create a row map and a col map 
-            // where the value of the map is an array of row and cols it can be in
-            // If any item in the map only has one row or one col, then you can eliminate that
-            // value from the cells outside this tile in that row/col
-            // console.log(`${cell.pos()}:`, cell.possibles);
-            let cells = this.getOpenCellsTile(tileNum);
-            let rowMap = new Map(), colMap = new Map();
-            // fill up maps with empty sets
-            for (let i = 1; i <= boardSize; i++) {
-                rowMap.set(i, new SpecialSet());
-                colMap.set(i, new SpecialSet());
-            }
-            cells.forEach(cell => {
-                // iterate each possible
-                cell.possibles.forEach(p => {
-                    rowMap.get(p).add(cell.row);
-                    colMap.get(p).add(cell.col);
-                });
-            });
-            
-            function clearOthers(map, method, tag) {
-                // now look for any item in the rowMap or colMap that has one and only one value in the set
-                map.forEach((set, possible) => {
-                    if (set.size === 1) {
-                        console.log(`Found common ${tag} value of ${possible} in tile ${tileNum}`);
-                        let rowCol = set.values().next().value;
-                        // need to eliminate possible from any other tiles in this row
-                        // iterate this row, but skip cells in the current tile
-                        this[method](rowCol).forEach(c => {
-                            if (c.tileNum !== tileNum) {
-                                possiblesCleared += c.clearPossibleValue(possible);
-                            }
-                        });
-                    }
-                });
-            }
-            
-            clearOthers.call(this, rowMap, "getOpenCellsRow", "row");
-            clearOthers.call(this, colMap, "getOpenCellsColumn", "col");                
-        }
-        
-        return possiblesCleared;
-    }
-
     // If there are only two cells or three cells in a tile that can contain a particular possible value and those cells
     // share a row or column, then that possible can be cleared from the rest of that row or column
     processPointingPairsTriples() {
@@ -1746,7 +1692,6 @@ while(b.setAllPossibles()) {}
 let processMethods = [
     "processNakedPairs",
     "processPointingPairsTriples",
-    "processTileCommonRowCol",
     "processHiddenSubset",
     "processXwing",
     "processSwordfish",

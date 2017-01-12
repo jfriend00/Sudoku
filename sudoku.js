@@ -1091,6 +1091,7 @@ class Board {
     // A naked pair is any two buddies that have exactly the same two possibles.  Since one of each of the two cells
     // must have one of each of the two values (because they are buddies), then all other cells in the common row/col/tile must not have
     // that value and their possibles for that value can be cleared
+    // FIXME: We should process naked triples and quads
     processNakedPairs() {
         let possiblesCleared = 0;
         console.log("Processing Naked Pairs");
@@ -1224,6 +1225,18 @@ class Board {
     // as long as they don't appear anywhere else.  And, of course the reason they are called hidden subsets is that
     // there can be other possibles with them.  In fact, it's those other possibles that will get eliminated from
     // the matched hidden pair/triple/quad by this scheme.
+    //
+    // The basic idea for this algorithm is as follows:
+    // For every row/col/tile
+    //    Get a pMap that tells you which cells each possible is in in the unit
+    //    For each possible in the unit, see if it is present in 2 to 4 cells 
+    //    If so, create a matchValues set and put this possible in it
+    //    For all the other possibles on the first cell that has this possible
+    //        Get it's list of cells from the pMap
+    //        See if that list of cells is the same as our original match
+    //        If so, add it to the matchValues
+    //        If we've found enough matches, then we have a hidden (or naked pair)
+    //        Clear excess possibles from the matched cells
     processHiddenSubset() {
         console.log("Processing  Hidden Subset");
         let possiblesCleared = 0;
@@ -1251,6 +1264,7 @@ class Board {
                                 matchValues.add(possible);
                                 // if we found enough matches, then we're done
                                 if (matchValues.size === n) {
+                                    // record that we've already processed these possibles so we don't find the other ends of the match
                                     found.add(matchValues);
                                     console.log(`found hidden ${utils.makeQtyStr(n)} {${matchValues.toNumberString()}} at ${sc(set)}`);
                                     // at this point, we can clear the other possibles from the matched cells 
@@ -1279,158 +1293,6 @@ class Board {
         });
         return possiblesCleared;
     }
-    
-    // This technique is very similar to naked subsets, but instead of affecting other cells with the same row, 
-    // column or block, candidates are eliminated from the cells that hold the subset. If there are N cells, 
-    // with N candidates between them that don't appear elsewhere in the same row, column or block, then 
-    // any other candidates for those cells can be eliminated.
-    //
-    // What makes this complicated to detect is that all N candidates don't have to appear in each of the N cells
-    // as long as they don't appear anywhere else.  And, of course the reason they are called hidden subsets is that
-    // there can be other possibles with them.  In fact, it's those other possibles that will get eliminated from
-    // the matched hidden pair/triple/quad by this scheme.
-    processHiddenSubset2() {
-        console.log("Processing  Hidden Subset");
-        let possiblesCleared = 0;
-        // analyze all rows, columns and tiles
-        this.iterateOpenCellsByStructureAll(cells => {
-            // create a map that keeps track of which index a given possible can be in for any given row
-            // pMap: key is possible value, value is a Set of cell indexes that contain those possibles in a given row
-            //       There are 9 (boardSize) entries in each pMap
-            // pMap Map {
-            //  1 => Set {},                  // no open cells contain possible 1
-            //  2 => Set {},                  // no open cells contain possible 2
-            //  3 => Set { 3, 4 },            // cells 3 and 4 contain possible 3
-            //  4 => Set { 0, 1, 2, 4 },      // cells 0,1,2,4 contain possible 4
-            //  5 => Set { 0, 1, 2, 3, 4 },   // cells 0,1,2,3,4 contain possible 4
-            //  6 => Set {},                  // no open cells contain possible 6
-            //  7 => Set { 3, 4 },            // cells 3,4 contain possible 7
-            //  8 => Set { 0, 1, 3 },         // cells 0,1,3 contain possible 8
-            //  9 => Set {} }                 // no open cells contain possible 9
-            let pMap = new MapOfSets(boardSize, 1);
-            // init pMap to an empty set for each possible value
-            //for (let i = 1; i <= boardSize; i++) {
-            //    pMap.set(i, new SpecialSet());
-            //}
-            // iterate these cells
-            cells.forEach((cell, index) => {
-                for (let p in cell.possibles) {
-                    pMap.get(p).add(index);
-                }
-            });
-            
-            function findSameStringsInMap(stringMap) {
-                // stringMap looks like this:
-                //  3 => "3,4",            // cells 3 and 4 contain possible 3
-                //  4 => "0,1,2,4,         // cells 0,1,2,4 contain possible 4
-                //  5 => "0,1,2,3,4",      // cells 0,1,2,3,4 contain possible 4
-                //  7 => "3,4",            // cells 3,4 contain possible 7
-                //  8 => "0,1,3",          // cells 0,1,3 contain possible 8
-                // when it says "cells 3 and 4", it means the index into the cells array
-                // key is possible number
-                // value is stringified version of cell index array
-                let matchMap = new Map();
-
-                // count up how many of each string we have by collecting each string into it's own map
-                // where the string is the key and the value is an object {cnt: x, keys: [key]}
-                stringMap.forEach((str, possible) => {
-                    // if we don't have this value, then initialize that map entry
-                    if (!matchMap.has(str)) {
-                        matchMap.set(str, {cnt: 1, possibles: [possible]});
-                    } else {
-                        let obj = matchMap.get(str);
-                        obj.cnt++;
-                        obj.possibles.push(possible);
-                    }
-                });
-                
-                // matchMap looks like this:
-                // Map {
-                //   '3,4' => { cnt: 2, possibles: [ 3, 7 ] },
-                //   '0,1,2,4' => { cnt: 1, possibles: [ 4 ] },
-                //   '0,1,3' => { cnt: 1, possibles: [ 8 ] } }                
-                
-                return matchMap;
-            }
-            
-            function findSameSetsInMap(map) {
-                // create a new map that converts the sets (that are values in the map) to strings for easier comparison
-                // Sets are converted to an array, sorted, then stringified for easy comparison
-                let stringMap = new Map();
-                map.forEach((set, key) => {
-                    // get rid of length set we aren't interested in
-                    if (set.size >= 2 && set.size <= 4) {
-                        stringMap.set(key, Array.from(set).sort((a, b) => a - b).join(","));
-                    }
-                }); 
-                // stringMap looks like this:
-                //  3 => "3,4",            // cells 3 and 4 contain possible 3
-                //  4 => "0,1,2,4,         // cells 0,1,2,4 contain possible 4
-                //  5 => "0,1,2,3,4",      // cells 0,1,2,3,4 contain possible 4
-                //  7 => "3,4",            // cells 3,4 contain possible 7
-                //  8 => "0,1,3",          // cells 0,1,3 contain possible 8
-                // when it says "cells 3 and 4", it means the index into the cells array
-
-                // now we need to find which entries have the same values
-                let matchMap = findSameStringsInMap(stringMap);
-                // matchMap looks like this:
-                // Map {
-                //   '3,4' => { cnt: 2, possibles: [ 3, 7 ] },
-                //   '0,1,2,4' => { cnt: 1, possibles: [ 4 ] },
-                //   '0,1,3' => { cnt: 1, possibles: [ 8 ] } }                
-                return matchMap;
-            }
-            
-            function makeName(val) {
-                switch(val) {
-                    case 2: 
-                        return "pair";
-                    case 3:
-                        return "triple";
-                    case 4:
-                        return "quad";
-                    default:
-                        return "undefined, not pair, triple or quad";
-                }
-            }
-            
-            let matchMap = findSameSetsInMap(pMap);
-            matchMap.forEach((obj, cellStr) => {
-                let cnt = obj.cnt;
-                // cellStr looks like this '1,2,4'
-                // we're looking things where cnt is 2 and len is 3, cnt is 3 and len is 5, cnt is 4 and len is 7
-                let cellIndexes = [], keepers, len = cellStr.length;
-                if ((cnt === 2 && len === 3) || (cnt === 3 && len === 5) || (cnt === 4 && len === 7)) {
-                    keepers = obj.possibles;
-                    cellIndexes = cellStr.split(",").map(n => +n);
-                    let cellDescription = cellIndexes.map(i => {
-                        return cells[i].pos();
-                    }).join(" ");
-                    console.log(`Found hidden ${makeName(cnt)} [${keepers}] in cells ${cellDescription}`);
-                    // console.log("pMap", pMap);
-                    // console.log("matchMap", matchMap);
-                    // console.log("cellIndexes", cellIndexes);
-                }
-                // now for each cell index, remove any other possible that is not keepers
-                // by just setting the possibles to the keepers
-                cellIndexes.forEach(i => {
-                    let keepersSet = new SpecialSet(keepers);
-                    let possibles = cells[i].possibles;
-                    // for each of the current possibles, see if we are supposed to keep it or not
-                    possibles.forEach(p => {
-                        if (!keepersSet.has(p)) {
-                            console.log(`  removing possible ${p} from ${cells[i].pos()}`, possibles)
-                            possibles.delete(p);
-                            ++possiblesCleared;
-                        }
-                    });
-                });
-            });
-        });
-        
-        return possiblesCleared;
-    }
-    
     
     // Demo: http://www.sadmansoftware.com/sudoku/xwing.php
     // When a given value can only be in two particular same spots in each of two particular rows or columns

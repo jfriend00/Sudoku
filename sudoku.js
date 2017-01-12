@@ -199,6 +199,17 @@ let nakedPair2 =
     ...1.58..
     8.6.....7`;
     
+let nakedTriplet1 = 
+   `..8.1....
+    23...9...
+    5....8.2.
+    ..5.2..8.
+    3.......6
+    .8..9.5..
+    .4.6....9
+    ...3...14
+    ....8.7..`;
+    
 let blockBlock1 = 
     `.....3948
     3.9..85..
@@ -1096,6 +1107,33 @@ class Board {
         return possiblesCleared;
     }
     
+    processNakedTriplesQuads() {
+        let possiblesCleared = 0;
+        
+        // this is brute force - create all triple and quad combinations and check them
+        this.iterateOpenCellsByStructureAll(cells => {
+            for (let len of [3,4]) {
+                let combos = utils.makeCombinations(cells, len);
+                for (let combo of combos) {
+                    // check this to see if it's a triple/quad
+                    let union = new SpecialSet();
+                    for (let cell of combo) {
+                        union.addTo(cell.possibles);
+                    }
+                    if (union.size === len) {
+                        console.log(`found ${utils.makeQtyStr(len)} {${union.toNumberString()}} in cells ${sc(combo)}`);
+                        // clear all possibles in the union from the other cells on the set
+                        let exclusionCells = new SpecialSet(cells);
+                        exclusionCells.remove(combo);
+                        possiblesCleared += this.clearListOfPossibles(exclusionCells, union, 1);
+                    }
+                }
+            }
+        });
+        
+        return possiblesCleared;
+    }
+    
     // If there are only two cells or three cells in a tile that can contain a particular possible value and those cells
     // share a row or column, then that possible can be cleared from the rest of that row or column
     processPointingPairsTriples() {
@@ -1781,16 +1819,20 @@ class Board {
 //let b = new Board(nakedPair1);
 //let b = new Board(hiddenTriplet);
 //let b = new Board(mypuzzleorg01022017veryhard);
-let b = new Board(hiddenQuad);
+let b = new Board(nakedTriplet1);
 //let b = new Board(mypuzzleorg01032017veryhard);    
 
 // keep setting possibles while we still find more values to set
 // this could be made faster by only revisiting impacted cells
+console.log("Initial Board import/export:");
+b.outputBoard();
+console.log("");
 b.outputPossibles(true);
 while(b.setAllPossibles()) {}
 
 let processMethods = [
     "processNakedPairs",
+    "processNakedTriplesQuads",
     "processPointingPairsTriples",
     "processHiddenSubset",
     "processXwing",

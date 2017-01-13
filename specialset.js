@@ -37,6 +37,10 @@ class SpecialSet extends Set {
         return this.toSortedArrayNumber().join(",");
     }
     
+    toBracketString() {
+        return "{" + this.toNumberString() + "}";
+    }
+    
     // remove items in this set that are in the otherIterable
     // returns a count of number of items removed
     remove(otherIterable) {

@@ -775,6 +775,8 @@ class Board {
     // Iterate all rows, columns and tiles
     // pass the iterator an array of open cells
     // If the skipTile argument is present, then don't iterate tiles, only rows/cols
+    //
+    // If the callback returns "again", then it will repeat the unit it was just on
     iterateOpenCellsByStructureAll(skipTile, f) {
         let fn = f;
         if (typeof skipTile === "function") {
@@ -783,17 +785,20 @@ class Board {
         }
         let cells;
         for (let row = 0; row < boardSize; row++) {
-            cells = this.getOpenCellsRow(row);
-            fn.call(this, cells, "row", row);
+            do {
+                cells = this.getOpenCellsRow(row);
+            } while (fn.call(this, cells, "row", row) === "again");
         }
         for (let col = 0; col < boardSize; col++) {
-            cells = this.getOpenCellsColumn(col);
-            fn.call(this, cells, "column", col);
+            do {
+                cells = this.getOpenCellsColumn(col);
+            } while (fn.call(this, cells, "column", col) === "again");
         }
         if (!skipTile) {
             for (let tileNum = 0; tileNum < boardSize; tileNum++) {
-                cells = this.getOpenCellsTile(tileNum);
-                fn.call(this, cells, "tile", tileNum);
+                do {
+                    cells = this.getOpenCellsTile(tileNum);
+                } while (fn.call(this, cells, "tile", tileNum) === "again");
             }
         }
     }
@@ -1116,7 +1121,7 @@ class Board {
     
     processNakedTriplesQuads() {
         let possiblesCleared = 0;
-        
+       
         // this is brute force - create all triple and quad combinations and check them
         this.iterateOpenCellsByStructureAll(cells => {
             for (let len of [3,4]) {
@@ -1139,7 +1144,9 @@ class Board {
                         // and the combinations may no longer be valid
                         // Because we have possiblesCleared that are non-zero, we will get called again to
                         // do the additional work
-                        if (newPossiblesCleared) return;
+                        // return "again" causes iterateOpenCellsByStructureAll() to re-call this callback with
+                        // a newly calculated set of cells
+                        if (newPossiblesCleared) return "again";
                     }
                 }
             }
@@ -1236,17 +1243,17 @@ class Board {
                 // test directly to see if it is a pair, triple or quad already (based on it's length)
                 pCleared = testSubset(set, otherCellSet);
                 possiblesCleared += pCleared;
-                if (pCleared) return;
+                if (pCleared) return "again";
                 
                 // test for manufactured triples
                 pCleared = makeSubsets(set, otherCellSet, 3);
                 possiblesCleared += pCleared;
-                if (pCleared) return;
+                if (pCleared) return "again";
                 
                 // test for manufactured quads
                 pCleared = makeSubsets(set, otherCellSet, 4);
                 possiblesCleared += pCleared;
-                if (pCleared) return;
+                if (pCleared) return "again";
             }
         });
         

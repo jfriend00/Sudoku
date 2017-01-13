@@ -302,7 +302,11 @@ let hardOnline1 = '3200008690502003740090001252106359070000400020050820135000002
 let hardOnline2 = '340007096000040307279306084003125009001070603790634015004762938900483001837591462';
 let mypuzzleorg01022017veryhard = '207080006040002079500000004002030000000105000000020100800000007650900020900060805';
 let mypuzzleorg01032017veryhard = '010070640200009000009500700020000000600703005000000030001002900000800001067090050';
-    
+let mypuzzleorg01132017veryhard = '307001096160000008000060003013005000000000000000900140700030000800000029940700801';    
+let mypuzzleorg01132017averyhard ='357081096160390578000567013013605980500008360600903145721839654830000729940700831';
+let mypuzzleorg01062017veryhard = '165378249478259136239006008380504092000097384094823010013982460900701803800035901';
+
+
 let SpecialSet = require('./specialset.js');    
     
 
@@ -371,7 +375,7 @@ const allValuesSet = new SpecialSet(allValues);
 function showCellCollection(collection) {
     let results = [];
     for (let cell of collection) {
-        results.push(cell.pos());
+        results.push(cell.xy());
     }
     return results.join(" ");
 }
@@ -410,7 +414,7 @@ class Cell {
         if (this.possibles.has(val)) {
             let level = nestLevel || 0;
             let leading = Array(level).fill(" ").join("");
-            console.log(leading + `removing possible ${val} from ${this.pos()}`, this.possibles);
+            console.log(leading + `removing possible ${val} from ${this.xy()}`, this.possibles);
             this.possibles.delete(val);
             this.dirty = true;
             /* 
@@ -427,8 +431,12 @@ class Cell {
         return 0;
     }
     
-    pos() {
+    xy() {
         return `(${this.row}, ${this.col})`;
+    }
+    
+    pList() {
+        return this.possibles.toBracketString();
     }
     
     setValue(val) {
@@ -440,7 +448,7 @@ class Cell {
     static outputCellList(list) {
         let output = [];
         for (let cell of list) {
-            output.push(cell.pos());
+            output.push(cell.xy());
         }
         return output.join(" ");
     }
@@ -469,7 +477,7 @@ class Board {
         
         function error(cell, msg) {
             conflicts.add(cell);
-            console.log(`checkBoard() error ${msg}, ${cell.pos()}`);
+            console.log(`checkBoard() error ${msg}, ${cell.xy()}`);
         }
         
         this.iterateCellsByStructureAll((cells, tag, num) => {
@@ -902,7 +910,7 @@ class Board {
         let totalCellsSet = 1;
         let level = nestLevel || 0;
         let leading = Array(level).fill(" ").join("");
-        console.log(leading + `setValue: ${cell.pos()} to ${val}`);
+        console.log(leading + `setValue: ${cell.xy()} to ${val}`);
         cell.setValue(val);
         totalCellsSet += this.clearBuddyPossibles(cell, level + 1);
         return totalCellsSet;
@@ -998,7 +1006,7 @@ class Board {
             possibles.delete(cell.value);
         });
         
-        // console.log(`possibles ${homeCell.pos()}: `, possibles);
+        // console.log(`possibles ${homeCell.xy()}: `, possibles);
         return possibles;
     }
     
@@ -1035,7 +1043,7 @@ class Board {
                 
                 // If only one possible value set it (naked single)
                 if (cell.possibles.size === 1) {
-                    console.log(`Found cell ${cell.pos()} with only one possible, setting value of ${cell.possibles.getFirst()}`);
+                    console.log(`Found cell ${cell.xy()} with only one possible, setting value of ${cell.possibles.getFirst()}`);
                     this.setValue(cell, cell.possibles.getFirst());
                     ++valuesSet;
                     return;
@@ -1056,12 +1064,12 @@ class Board {
                     // if all values are not accounted for, then that value MUST go in this cell
                     if (union.size !== boardSize) {
                         if (union.size !== (boardSize - 1)) {
-                            throw new Error(`Got bad union for possibles on cell ${cell.pos()}`);
+                            throw new Error(`Got bad union for possibles on cell ${cell.xy()}`);
                         }
                         // now figure out which value is missing
                         let missing = allValuesSet.difference(union);
                         let val = missing.getFirst();
-                        console.log(`Found ${cell.pos()} is only cell that can have ${val}`);
+                        console.log(`Found ${cell.xy()} is only cell that can have ${val}`);
                         valuesSet += this.setValue(cell, val);
                     }
                 });
@@ -1077,7 +1085,6 @@ class Board {
     // A naked pair is any two buddies that have exactly the same two possibles.  Since one of each of the two cells
     // must have one of each of the two values (because they are buddies), then all other cells in the common row/col/tile must not have
     // that value and their possibles for that value can be cleared
-    // FIXME: We should process naked triples and quads
     processNakedPairs() {
         let possiblesCleared = 0;
         console.log("Processing Naked Pairs");
@@ -1091,7 +1098,7 @@ class Board {
                         // get other cell in the pair
                         let cell2 = pairs.get(hash);
                         // found a matching pair, so remove this pair from any other possibles in this cells array
-                        console.log(`found matching pair: ${cell2.pos()}, ${cell.pos()}`, cell.possibles)
+                        console.log(`found matching pair: ${cell2.xy()}, ${cell.xy()}`, cell.possibles)
                         
                         // for each cell in the array we are processing
                         // if it's not one of the cells in the pair, then clear each of the possible values from it
@@ -1125,7 +1132,14 @@ class Board {
                         // clear all possibles in the union from the other cells on the set
                         let exclusionCells = new SpecialSet(cells);
                         exclusionCells.remove(combo);
-                        possiblesCleared += this.clearListOfPossibles(exclusionCells, union, 1);
+                        let newPossiblesCleared = this.clearListOfPossibles(exclusionCells, union, 1);
+                        possiblesCleared += newPossiblesCleared;
+                        
+                        // we have to stop processing this set of cells because they may no longer all be open
+                        // and the combinations may no longer be valid
+                        // Because we have possiblesCleared that are non-zero, we will get called again to
+                        // do the additional work
+                        if (newPossiblesCleared) return;
                     }
                 }
             }
@@ -1148,10 +1162,11 @@ class Board {
             let pMap = this.getPossibleMap(cells);
             // at this point, we know which cells each possible is present in
             // let's find the ones that are in two or three cells and look at them further
-            pMap.forEach((set, p) => {
+            // Use ES6 iteration so we can return out of the whole thing
+            for (let [p, set] of pMap) {
                 if (set.size === 2 || set.size === 3) {
                     // need to figure out of these cells are in same row or col
-                    ["row", "col"].forEach(dir => {
+                    for (let dir of ["row", "col"]) {
                         let union = new SpecialSet();
                         for (let cell of set) {
                             union.add(cell[dir]);
@@ -1165,11 +1180,15 @@ class Board {
                             let clearCells = new SpecialSet(this.getOpenCellsX(dir, union.getFirst()));
                             // remove any from this tile
                             clearCells.remove(cells);
-                            possiblesCleared += this.clearListOfPossibles(clearCells, [p]);
+                            let newPossiblesCleared = this.clearListOfPossibles(clearCells, [p]);
+                            possiblesCleared += newPossiblesCleared;
+                            // After we clear some possibles here, it seems likely that the pMap is no longer accurate
+                            // so we have to return and let it all start over
+                            if (newPossiblesCleared) return possiblesCleared;
                         }
-                    });
+                    }
                 }
-            });
+            }
         }
         
         return possiblesCleared;
@@ -1195,28 +1214,40 @@ class Board {
     //            test each one to see if it's a legal triple or quad
     processHiddenSubset() {
         console.log("Processing  Hidden Subset");
-        let possiblesCleared = 0;
+        let possiblesCleared = 0, pCleared;
+        
         // analyze all rows, columns and tiles
         this.iterateOpenCellsByStructureAll((cells, type, typeNum) => {
             // get map of possibles in this list of cells
             let pMap = this.getPossibleMap(cells);
             if (cells.length < 3) return;
-            pMap.forEach((set, p) => {
+            for (let [p, set] of pMap) {
                 // if there are more than 4 cells this value is in, it can't be a key value in a pair, triple or quad
                 if (set.size < 2 || set.size > 4) return;
                 // make a set of open cells not in the original set to be considered for triples or quads
                 let otherCellSet = new SpecialSet(cells);
                 otherCellSet.remove(set);
+                
+                // The pMap is invalidated if we actually change any possibles, so we have return out and start over
+                // In this particular case, we don't ever actually set any cells, so the cells array is OK
+                // but the pMap iteration is potentially off so it has to be started over
+                // These returns are from the callback, not from the outer function
 
                 // test directly to see if it is a pair, triple or quad already (based on it's length)
-                possiblesCleared += testSubset(set, otherCellSet);
+                pCleared = testSubset(set, otherCellSet);
+                possiblesCleared += pCleared;
+                if (pCleared) return;
                 
                 // test for manufactured triples
-                possiblesCleared += makeSubsets(set, otherCellSet, 3);
+                pCleared = makeSubsets(set, otherCellSet, 3);
+                possiblesCleared += pCleared;
+                if (pCleared) return;
                 
                 // test for manufactured quads
-                possiblesCleared += makeSubsets(set, otherCellSet, 4);
-            });
+                pCleared = makeSubsets(set, otherCellSet, 4);
+                possiblesCleared += pCleared;
+                if (pCleared) return;
+            }
         });
         
         // test for triple and quad
@@ -1282,7 +1313,7 @@ class Board {
                     for (let cell of candidateSet) {
                         let removing = cell.possibles.intersection(otherUnion);
                         if (removing.size) {
-                            console.log(` removing possibles {${removing.toNumberString()}} from ${cell.pos()}`)
+                            console.log(` removing possibles {${removing.toNumberString()}} from ${cell.xy()}`)
                             cnt += cell.possibles.remove(removing);
                         }
                     }
@@ -1296,88 +1327,7 @@ class Board {
         return possiblesCleared;
     }
     
-    // This technique is very similar to naked subsets, but instead of affecting other cells with the same row, 
-    // column or block, candidates are eliminated from the cells that hold the subset. If there are N cells, 
-    // with N candidates between them that don't appear elsewhere in the same row, column or block, then 
-    // any other candidates for those cells can be eliminated.
-    //
-    // What makes this complicated to detect is that all N candidates don't have to appear in each of the N cells
-    // as long as they don't appear anywhere else.  And, of course the reason they are called hidden subsets is that
-    // there can be other possibles with them.  In fact, it's those other possibles that will get eliminated from
-    // the matched hidden pair/triple/quad by this scheme.
-    //
-    // The basic idea for this algorithm is as follows:
-    // For every row/col/tile
-    //    Get a pMap that tells you which cells each possible is in in the unit
-    //    For each possible in the unit, see if it is present in 2 to 4 cells 
-    //    If so, create a matchValues set and put this possible in it
-    //    For all the other possibles on the first cell that has this possible
-    //        Get it's list of cells from the pMap
-    //        See if that list of cells is the same as our original match
-    //        If so, add it to the matchValues
-    //        If we've found enough matches, then we have a hidden (or naked pair)
-    //        Clear excess possibles from the matched cells
-    // 
-    // FIXME: A hidden triple or quad does not need to contain all of the values
-    // That is why we don't currently detect the quad in the hiddenQuad puzzle
-    processHiddenSubsetx() {
-        console.log("Processing  Hidden Subset");
-        let possiblesCleared = 0;
-        // analyze all rows, columns and tiles
-        this.iterateOpenCellsByStructureAll((cells, type, typeNum) => {
-            // get map of possibles in this list of cells
-            let pMap = this.getPossibleMap(cells);
-            // iterate for each possible that exists in this row/col/tile
-            pMap.forEach((set, p) => {
-                let n = set.size;
-                // skip possible values that don't have the right number of cells
-                // or have already been part of a hidden subset in this group of cells
-                if (n >= 2 && n <= 4) {
-                    let matchValues = new SpecialSet([p]);
-                    // now the goal is to go through each of the possibles on this cell and 
-                    // see if they all exist only on the same other n cells
-                    // we can start with any cell in the set because if this is a match, the possible have to be on all those cells
-                    
-                    // Because not all cells have to have all possibles involved in the set, we're going to have to 
-                    // test all the possibles
-                    let c1 = set.getFirst();
-                    for (let possible of c1.possibles) {
-                        if (possible !== p) {
-                            let testSet = pMap.get(possible);
-                            // if this other possible is on the exact same set of cells, then count it
-                            if (testSet && testSet.equals(set)) {
-                                matchValues.add(possible);
-                                // if we found enough matches, then we're done
-                                if (matchValues.size === n) {
-                                    // record that we've already processed these possibles so we don't find the other ends of the match
-                                    console.log(`found hidden ${utils.makeQtyStr(n)} {${matchValues.toNumberString()}} at ${sc(set)}`);
-                                    // at this point, we can clear the other possibles from the matched cells 
-                                    // that are not part of the hidden set
-                                    for (let cell of set) {
-                                        let removing = cell.possibles.difference(matchValues);
-                                        if (removing.size) {
-                                            ++possiblesCleared;
-                                            console.log(` removing possibles {${removing.toNumberString()}} from ${cell.pos()}`)
-                                            // can just modify possibles without checking for only one possible left
-                                            // because by definition, this is a pair, triple or quad so always at least 2 possibles left
-                                            cell.possibles.removeNonMatching(matchValues);
-                                        }
-                                    }
-                                    // Interesting note: After you find a hidden subset and remove the other possibles on it, it 
-                                    // becomes a naked subset so the naked subset code will get called to see if further possibles
-                                    // can be cleared
-                                    
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        });
-        return possiblesCleared;
-    }
-    
+
     // Demo: http://www.sadmansoftware.com/sudoku/xwing.php
     // When a given value can only be in two particular same spots in each of two particular rows or columns
     // then it must be in one of the other for each and no other cells in the common rows or columns 
@@ -1456,8 +1406,8 @@ class Board {
                             columns = temp;
                         }
                         console.log(`Found x-wing pattern by ${type}: value=${digit} ` +
-                            `${this.getCell(rows[0], columns[0]).pos()}, ${this.getCell(rows[0], columns[1]).pos()}, ` + 
-                            `${this.getCell(rows[1], columns[0]).pos()}, ${this.getCell(rows[1], columns[1]).pos()}`);
+                            `${this.getCell(rows[0], columns[0]).xy()}, ${this.getCell(rows[0], columns[1]).xy()}, ` + 
+                            `${this.getCell(rows[1], columns[0]).xy()}, ${this.getCell(rows[1], columns[1]).xy()}`);
                             
                         let getFnName;
                         if (type === "row") {
@@ -1475,7 +1425,7 @@ class Board {
                                 if (index !== position1 && index !== position2) {
                                     // debug code, next three lines
                                     if (cell.possibles.has(digit)) {
-                                        console.log(`Removing possible ${digit} from ${cell.pos()}`, cell.possibles);
+                                        console.log(`Removing possible ${digit} from ${cell.xy()}`, cell.possibles);
                                     }
                                     if (!cell.value && cell.possibles.delete(digit)) {
                                         ++possiblesCleared;
@@ -1566,7 +1516,7 @@ class Board {
                         let candidateCells = arr[0].cells.union(arr[1].cells, arr[2].cells);
                         if (candidateCells.size === 3) {
                             let rows = arr.map(item => item.rowNum);
-                            console.log(`found swordfish for value ${cellValue}, ${tag === "row" ? "columns" : "rows"} [${candidateCells.toNumberString()}] and ${tag}s [${rows.join(",")}]`);
+                            console.log(`found swordfish for value ${cellValue}, ${tag === "row" ? "columns" : "rows"} ${candidateCells.toBracketString()} and ${tag}s [${rows.join(",")}]`);
                             
                             // get opposite direction for clearing
                             let direction = (tag === "row" ? "column" : "row");
@@ -1629,16 +1579,16 @@ class Board {
                             let matches = arr.concat(cell);
                             if (matches[0].row === matches[1].row && matches[0].row === matches[2].row) {
                                 // all in same row
-                                console.log(`found triplet in same row: ${matches[0].pos()}, ${matches[1].pos()}, ${matches[2].pos()}`)
+                                console.log(`found triplet in same row: ${matches[0].xy()}, ${matches[1].xy()}, ${matches[2].xy()}`)
                             } else if (matches[0].col === matches[1].col && matches[0].col === matches[2].col) {
                                 // all in same col
-                                console.log(`found triplet in same col: ${matches[0].pos()}, ${matches[1].pos()}, ${matches[2].pos()}`)
+                                console.log(`found triplet in same col: ${matches[0].xy()}, ${matches[1].xy()}, ${matches[2].xy()}`)
                             } else if (matches[0].tileNum === matches[1].tileNum && matches[0].tileNum === matches[2].tileNum) {
                                 // all in same tileNum
-                                console.log(`found triplet in same tile: ${matches[0].pos()}, ${matches[1].pos()}, ${matches[2].pos()}`)
+                                console.log(`found triplet in same tile: ${matches[0].xy()}, ${matches[1].xy()}, ${matches[2].xy()}`)
                             } 
                             // must actually be XYWing pattern
-                            console.log(`found XYWing: cells ${cell.pos()}, ${arr[0].pos()}, ${arr[1].pos()}`);
+                            console.log(`found XYWing with pivot ${cell.xy()} ${cell.pList()} and cells ${arr[0].xy()} ${arr[0].pList()}, ${arr[1].xy()} ${arr[1].pList()}`);
 
                             // For the leaf pair (not including the pivot cell)
                             //     Find common buddies
@@ -1675,7 +1625,7 @@ class Board {
             // if neither cell or index is in the exceptions list, then we can clear the possible
             if (!exceptions || (!exceptions.has(cell) && !exceptions.has(index))) {
                 if (cell.possibles.delete(val)) {
-                    console.log(`clearPossibles: cell:${cell.pos()}, val:${val}`);
+                    console.log(`clearPossibles: cell:${cell.xy()}, val:${val}`);
                     if (cell.possibles.size === 0) {
                         console.log('error: clearPossibles left no possibles'); 
                     }
@@ -1814,19 +1764,24 @@ class Board {
 
 
 
-//let b = new Board(boards[2]);
-//let b = new Board(xywing2);
-//let b = new Board(nakedPair1);
-//let b = new Board(hiddenTriplet);
-//let b = new Board(mypuzzleorg01022017veryhard);
-let b = new Board(nakedTriplet1);
-//let b = new Board(mypuzzleorg01032017veryhard);    
+let b;
+if (process.argv[2]) {
+    b = new Board(process.argv[2]);
+} else {
+    // b = new Board(boards[2]);
+    // b = new Board(xywing2);
+    // b = new Board(nakedPair1);
+    // b = new Board(hiddenTriplet);
+    // b = new Board(mypuzzleorg01022017veryhard);
+    // b = new Board(nakedTriplet1);
+    // b = new Board(mypuzzleorg01032017veryhard);   
+    b = new Board("051347800400000005000506000023408650580000041004005200007000500900750006005962700"); 
+}
 
 // keep setting possibles while we still find more values to set
 // this could be made faster by only revisiting impacted cells
 console.log("Initial Board import/export:");
 b.outputBoard();
-console.log("");
 b.outputPossibles(true);
 while(b.setAllPossibles()) {}
 

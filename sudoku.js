@@ -1553,17 +1553,21 @@ class Board {
                             console.log(`!!found normal X-Wing for possible ${p} by ${dir}, cells: ${Cell.outputCellList(xwingCells)}`);
                         } else {
                             cleanCandidates.set(cleanIndexStr, set);
-                            let pos0 = Cell.calcTilePosition(dir, pair[0].tileNum);
-                            let pos1 = Cell.calcTilePosition(dir, pair[1].tileNum);
-                            if (pos0 !== pos1) {
-                                // example "1:0,8" which means possible value 1 in tileIndexes 0 and column 8
+                            let tilepos0 = Cell.calcTilePosition(dir, pair[0].tileNum);
+                            let tilepos1 = Cell.calcTilePosition(dir, pair[1].tileNum);
+                            if (tilepos0 !== tilepos1) {
+                                // example "1:0,8" which means possible value 1 in tileIndex 0 and column 8
                                 // A clean candidate can have two possible matches, first tileIndex with second position
                                 //     and second tileIndex with first position
                                 // Either can be a match so we put them both in the map
-                                let tileIndexStr = `${p}:${pos0},${pair[1].getPosition(dir)}`;
-                                cleanCandidatesTileIndex.set(tileIndexStr, {set, rowcol: i});
-                                tileIndexStr = `${p}:${pos1},${pair[0].getPosition(dir)}`;
-                                cleanCandidatesTileIndex.set(tileIndexStr, {set, rowcol: i});
+                                // finMatch is the cell that matches up with the finCorner on the other side
+                                // We can use finMatch to get the row/column that we're supposed to clear possibles from
+                                let col0 = pair[0].getPosition(dir);
+                                let col1 = pair[1].getPosition(dir);
+                                let tileIndexStr = `${p}:${tilepos0},${col1}`;
+                                cleanCandidatesTileIndex.set(tileIndexStr, {set, rowcol: i, finMatchColumn: col0});
+                                tileIndexStr = `${p}:${tilepos1},${col0}`;
+                                cleanCandidatesTileIndex.set(tileIndexStr, {set, rowcol: i, finMatchColumn: col1});
                             }
                         }
                     }
@@ -1584,22 +1588,48 @@ class Board {
                         if (tileMap.size === 2) {
                             let singles = [];
                             let fins = [];
+                            // do a pass through the tileMap to load each entry into either the 
+                            // singles array or the fins array
                             for (let [tileIndex, cellSet] of tileMap) {
-                                let tIndex = Cell.calcTilePosition(dir, tileIndex);
+                                let tilePos = Cell.calcTilePosition(dir, tileIndex);
                                 if (cellSet.size === 1) {
                                     let cell = cellSet.getFirst();
-                                    singles.push({pos: cell.getPosition(dir), cellSet: cellSet, tileIndex: tIndex, p: p});
+                                    singles.push({pos: cell.getPosition(dir), cellSet, tilePos, tileIndex, p});
                                 } else {
-                                    fins.push({tileIndex: tIndex, cellSet, p});
+                                    fins.push({cellSet, tilePos, tileIndex, p});
                                 }
                             }
+                            // now build the finnedCandidates array
                             if (singles.length === 2) {
-                                // both singles, we can make two separate entries because either cell can act as the fin
-                                finnedCandidates.push({indexStr: `${p}:${singles[0].tileIndex},${singles[1].pos}`, fin: singles[0].cellSet, cell: singles[1].cellSet.getFirst(), p: p, dir: dir, rowcol: i});
-                                finnedCandidates.push({indexStr: `${p}:${singles[1].tileIndex},${singles[0].pos}`, fin: singles[1].cellSet, cell: singles[0].cellSet.getFirst(), p: p, dir: dir, rowcol: i});
+                                // both singles, we make two separate entries, with either single acting as the fin
+                                // add fin candidate with singles[0] acting as the fin and singles[1] as the single cell
+                                finnedCandidates.push({
+                                    indexStr: `${p}:${singles[0].tilePos},${singles[1].pos}`, 
+                                    fin: singles[0].cellSet, 
+                                    cell: singles[1].cellSet.getFirst(), 
+                                    p: p, 
+                                    dir: dir, 
+                                    rowcol: i
+                                });
+                                // add fin candidate with singles[1] acting as the fin and singles[0] as the single cell
+                                finnedCandidates.push({
+                                    indexStr: `${p}:${singles[1].tilePos},${singles[0].pos}`, 
+                                    fin: singles[1].cellSet, 
+                                    cell: singles[0].cellSet.getFirst(), 
+                                    p: p, 
+                                    dir: dir, 
+                                    rowcol: i
+                                });
                             } else if (fins.length === 1) {
-                                // must be one fin and one single - make one entry with the fin and single
-                                finnedCandidates.push({indexStr:`${p}:${fins[0].tileIndex},${singles[0].pos}`, fin: fins[0].cellSet, cell: singles[0].cellSet.getFirst(), p: p, dir: dir, rowcol: i});
+                                // must be an actual fin and a single
+                                finnedCandidates.push({
+                                    indexStr:`${p}:${fins[0].tilePos},${singles[0].pos}`, 
+                                    fin: fins[0].cellSet, 
+                                    cell: singles[0].cellSet.getFirst(), 
+                                    p: p, 
+                                    dir: dir, 
+                                    rowcol: i
+                                });
                             }
                         }
                     }
@@ -1615,7 +1645,31 @@ class Board {
                         // FIXME: I think each row for an x-wing must be in a separate tile
                         let clean = cleanCandidatesTileIndex.get(finItem.indexStr);
                         if (clean.rowcol !== finItem.rowcol) {
-                            console.log(`found finned X-Wing: ${dir}, possible ${finItem.p}, finCells: ${Cell.outputCellList(finItem.fin)}, single: ${finItem.cell.xy()}, other: ${Cell.outputCellList(clean.set)}`)
+                            // Reminder: example "1:0,8" which means possible value 1 in tileIndex 0 and column 8
+                            // So, we matched two of these strings.  This will match for either a regular x-wing or
+                            // a finned x-wing.  It's a finned match if either the fin has more than one cell in it or
+                            // if the fin does not contain the corner
+                            
+                            // clean.finMatchColumn is the column that the single, pretending to be a fin is in.  That is our
+                            // clearing column and is what we compare to the fin to see if the fin covers that or not
+                            let isFinnedMatch = false;
+                            if (finItem.fin.size > 1) {
+                                isFinnedMatch = true;
+                            } else {
+                                // now see if the single cell fin is not in corner so it's still a finned match
+                                let finnedCol = finItem.fin.getFirst().getPosition(dir);
+                                if (finnedCol !== clean.finMatchColumn) {
+                                    isFinnedMatch = true;
+                                }
+                            }
+                            if (isFinnedMatch) {
+                                console.log(`found finned X-Wing: ${dir}, possible ${finItem.p}, finCells: ${Cell.outputCellList(finItem.fin)}, single: ${finItem.cell.xy()}, other pair: ${Cell.outputCellList(clean.set)}`)
+                                // the possibles we can clear are the ones that are in the fin corner column and buddies with the fin
+                                // since the fin must be in the same tile as the corner, this means that we're to clear possibles from
+                                // the fine tile that have the same column or row as the corner
+                                // clean.finMatchColumn is the column we want to be clearing from
+                                // we can get the tileNum from any cell in the fin
+                            }
                         }
                     }
                 }

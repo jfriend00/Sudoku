@@ -166,6 +166,19 @@ let myPuzzleOrgDiabolic01092017 =
     .7...6...
     846.....1`;
 
+// from my samsung smartphone sudoku app set on Expert    
+let phone1 = 
+   `000300290
+    050070610
+    006009740
+    100800307
+    670123409
+    000704060
+    020000536
+    860030070
+    003600004`;
+    
+
 let myPuzzleOrgVeryHard01092017 = 
    `32.416.89
     ..8...3..
@@ -305,7 +318,7 @@ let mypuzzleorg01032017veryhard = '010070640200009000009500700020000000600703005
 let mypuzzleorg01132017veryhard = '307001096160000008000060003013005000000000000000900140700030000800000029940700801';    
 let mypuzzleorg01132017averyhard ='357081096160390578000567013013605980500008360600903145721839654830000729940700831';
 let mypuzzleorg01062017veryhard = '165378249478259136239006008380504092000097384094823010013982460900701803800035901';
-
+let finnedxwing = '900040000704080050080000100007600820620400000000000019000102000890700000000050003';
 
 let SpecialSet = require('./specialset.js');    
     
@@ -451,6 +464,23 @@ class Cell {
             output.push(cell.xy());
         }
         return output.join(" ");
+    }
+    
+    // calcs the position from the left of top of the box of this tileNum
+    // if dir === "row", then it calcs how many tiles the tileNum is from the left edge
+    // if dir === "column", then it calcs how many tiles the tileNum is from the top edge
+    // for a 9x9 board, this returns 0, 1 or 2 for legal tileNum values
+    static calcTilePosition(dir, tileNum) {
+        return dir === "row" ? tileNum % tileSize : Math.floor(tileNum / tileSize);
+    }
+    
+    // get our position in the row or column
+    getPosition(dir) {
+        if (dir === "row") {
+            return this.col;
+        } else {
+            return this.row;
+        }
     }
     
 }
@@ -605,6 +635,15 @@ class Board {
                 fn.call(this, cell, row, col);
             }                
         });
+    }
+    
+    // this iterates all the rows, columns or tiles depending upon what is passed for dir
+    // dir can be "row", "column" or "tile"
+    iterateOpenCellsX(dir, fn) {
+        for (var i = 0; i < boardSize; i++) {
+            let cells = this.getOpenCellsX(dir, i);
+            fn.call(this, cells, i, dir);
+        }
     }
     
     getTileNum(row, col) {
@@ -984,7 +1023,7 @@ class Board {
     // The map is indexed by possible value
     //     The value in the map for each possible is a set of cells
     getPossibleMap(cells) {
-        let pMap = new Map();
+        let pMap = new SpecialMap();
         for (let cell of cells) {
             for (let p of cell.possibles) {
                 // lookup the possible value in the pMap for this tile and add this cell to it
@@ -997,6 +1036,23 @@ class Board {
             }
         }
         return pMap;
+    }
+    
+    // gets a map of cells by tile where the tileNum is the index
+    // and a set of cells is the value for each tile that has a cell present
+    // using this, you can figure out how the cells are distributed across tiles
+    //   how many in each tile, if more than one in any tile, etc...
+    getTileMap(cells) {
+        let tileMap = new Map();
+        for (let cell of cells) {
+            let mapEntry = tileMap.get(cell.tileNum);
+            if (!mapEntry) {
+                mapEntry = new SpecialSet();
+                tileMap.set(cell.tileNum, mapEntry);
+            }
+            mapEntry.add(cell);
+        }
+        return tileMap;
     }
     
     // get all possibles for a given cell by eliminating all values
@@ -1125,6 +1181,8 @@ class Board {
         // this is brute force - create all triple and quad combinations and check them
         this.iterateOpenCellsByStructureAll(cells => {
             for (let len of [3,4]) {
+                // if there aren't enough cells, then no need to look further
+                if (cells.length <= len) continue;
                 let combos = utils.makeCombinations(cells, len);
                 for (let combo of combos) {
                     // check this to see if it's a triple/quad
@@ -1226,8 +1284,8 @@ class Board {
         // analyze all rows, columns and tiles
         this.iterateOpenCellsByStructureAll((cells, type, typeNum) => {
             // get map of possibles in this list of cells
-            let pMap = this.getPossibleMap(cells);
             if (cells.length < 3) return;
+            let pMap = this.getPossibleMap(cells);
             for (let [p, set] of pMap) {
                 // if there are more than 4 cells this value is in, it can't be a key value in a pair, triple or quad
                 if (set.size < 2 || set.size > 4) return;
@@ -1450,6 +1508,124 @@ class Board {
         
         return possiblesCleared;
     }
+    
+    // Good description of Finned X-Wing: http://www.sudokuwiki.org/Finned_X_Wing
+    // A Finned X-Wing consists of an X-Wing + one row that has a few extra values directly connected and in the same tile
+    // In the Sashimi Finned Wing, you can have extra corner values on one corner and not have the actual corner itself
+    // But all Finned X-Wings have a base two cells in a row/col that fits the 
+    //    normal X-Wing rule (no other matching possibles in the row/col)
+    // Fins can be in the same tile as an x-wing node.  Can only have one set of fins.
+    processXWingFinned() {
+        let possiblesCleared = 0;
+
+        function run(dir) {
+            
+            // this is indexed by a string that indicates what possible number and cells it could be an x-wing for
+            //    of this form: "1:4,8" which means possible value 1 in positions 4 and 8
+            // The value in the mapis an array of sets of pairs of cells that are the only pair 
+            //   that have this possible in this row/col
+            let cleanCandidates = new Map();
+            
+            // this is indexed by a string that indicates what possible number and tileIndexes it occupies
+            //    of this form: "1:0,2" which means possible value 1 in tileIndexes 0 and 2
+            let cleanCandidatesTileIndex = new Map();
+            
+            let finnedCandidates = [];
+            
+            this.iterateOpenCellsX(dir, (cells, i) => {
+                // can't be part of any xWing if it doesn't have at least two open cells
+                if (cells.length < 2) return;
+                
+                // get map of which possibles are in which cells
+                let pMap = this.getPossibleMap(cells);
+                for (let [p, set] of pMap) {
+                    // if there are exactly two in this row/col, then this is a clean candidate for an x-wing
+                    // lets remember it in the cleanCandidates
+                    if (set.size === 2) {
+                        // create the string descriptor for it
+                        let pair = Array.from(set);
+                        // create cleanIndexStr like this "1:4,8" which uniquely describes the possible and the two positions it is in
+                        let cleanIndexStr = `${p}:${pair[0].getPosition(dir)},${pair[1].getPosition(dir)}`;                        
+                        let match = cleanCandidates.get(cleanIndexStr);
+                        if (match) {
+                            let xwingCells = match.union(set);
+                            console.log(`!!found normal X-Wing for possible ${p} by ${dir}, cells: ${Cell.outputCellList(xwingcells)}`);
+                        } else {
+                            cleanCandidates.set(cleanIndexStr, set);
+                            let pos0 = Cell.calcTilePosition(dir, pair[0].tileNum);
+                            let pos1 = Cell.calcTilePosition(dir, pair[1].tileNum);
+                            if (pos0 !== pos1) {
+                                // example "1:0,8" which means possible value 1 in tileIndexes 0 and column 8
+                                // A clean candidate can have two possible matches, first tileIndex with second position
+                                //     and second tileIndex with first position
+                                // Either can be a match so we put them both in the map
+                                let tileIndexStr = `${p}:${pos0},${pair[1].getPosition(dir)}`;
+                                cleanCandidatesTileIndex.set(tileIndexStr, set);
+                                tileIndexStr = `${p}:${pos1},${pair[0].getPosition(dir)}`;
+                                cleanCandidatesTileIndex.set(tileIndexStr, set);
+                            }
+                        }
+                    }
+                    // You can have a finned x-wing with only two cells in a row when the x-wing corner is missing, but there
+                    // is another cell in the row of the corner and in the same tileNum as the corner
+                    // A valid finned row is 1-3 cells in one tile and 1 cell in another tile
+                    // There can be only one finned candidate per row because there can be no other cells with that possible
+                    //    value in the row for it to be a finned candidate (whew, that simplifies it a bit)
+                    // Find all valid finned rows
+                    if (set.size >= 2 && set.size <= (tileSize + 1)) {
+                        // The index of this map is the tileNum
+                        // The value is a set of cells in that tile
+                        let tileMap = this.getTileMap(set);
+                        
+                        
+                        // must be exactly two entries in this to be legal (can't have cells in all three tiles and
+                        //     can't make a finned match in one tile)
+                        if (tileMap.size === 2) {
+                            let singles = [];
+                            let fins = [];
+                            for (let [tileIndex, cellSet] of tileMap) {
+                                if (cellSet.size === 1) {
+                                    let cell = cellSet.getFirst();
+                                    singles.push({pos: cell.getPosition(dir), cellSet: cellSet, tileIndex: tileIndex});
+                                } else {
+                                    fins.push({tileIndex, cellSet});
+                                }
+                            }
+                            if (singles.length === 2) {
+                                // both singles, we can make two separate entries because either cell can act as the fin
+                                finnedCandidates.push({indexStr: `${p}:${singles[0].tileIndex},${singles[1].pos}`, fin: singles[0].cellSet, cell: singles[1].cellSet.getFirst()});
+                                finnedCandidates.push({indexStr: `${p}:${singles[1].tileIndex},${singles[0].pos}`, fin: singles[1].cellSet, cell: singles[0].cellSet.getFirst()});
+                            } else if (fins.length === 1) {
+                                // must be one fin and one single - make one entry with the fin and single
+                                finnedCandidates.push({indexStr:`${p}:${fins[0].tileIndex},${singles[0].pos}`, fin: fins[0].cellSet, cell: singles[0].cellSet.getFirst()});
+                            }
+                        }
+                    }
+                    
+                }
+                
+            });
+            // at this point, we have all the cleanCandidates and finnedCandidates for this row or column iteration
+            // we can compare a cleanCandidate with a finnedCandidate to find a finned x-wing match
+            if (finnedCandidates.length && cleanCandidatesTileIndex.size) {
+                for (let finItem of finnedCandidates) {
+                    if (cleanCandidatesTileIndex.has(finItem.indexStr)) {
+                        // FIXME: add better console output so we can see exactly what each match is
+                        // FIXME: I think each row for an x-wing must be in a separate tile
+                        console.log("found finned match: ", finItem, cleanCandidatesTileIndex.get(finItem.indexStr));
+                    }
+                }
+            }
+            
+            return 0;
+
+        }
+        
+        // analyze both rows and columns
+        possiblesCleared += run.call(this, "row");
+        possiblesCleared += run.call(this, "column");
+        return possiblesCleared;
+    }
 
     processSwordfish() {
         let possiblesCleared = 0;
@@ -1476,8 +1652,7 @@ class Board {
                     // remove wrong size items from the map
                     pMap.delete(val);
                 }
-            });
-            // typeNum is row/col number, so this is assigning a pMap object for that row/col into the array
+            });            // typeNum is row/col number, so this is assigning a pMap object for that row/col into the array
             candidates[type][typeNum] = pMap;
         });
         
@@ -1782,7 +1957,10 @@ if (process.argv[2]) {
     // b = new Board(mypuzzleorg01022017veryhard);
     // b = new Board(nakedTriplet1);
     // b = new Board(mypuzzleorg01032017veryhard);   
-    b = new Board("051347800400000005000506000023408650580000041004005200007000500900750006005962700"); 
+//    b = new Board("051347800400000005000506000023408650580000041004005200007000500900750006005962700"); 
+//    b = new Board(phone1);
+      b = new Board(finnedxwing);
+      
 }
 
 // keep setting possibles while we still find more values to set
@@ -1799,7 +1977,8 @@ let processMethods = [
     "processHiddenSubset",
     "processXwing",
     "processSwordfish",
-    "processXYWing"
+//    "processXYWing",
+    "processXWingFinned"
 ];
 
 let more = 0;

@@ -319,6 +319,7 @@ let mypuzzleorg01132017veryhard = '307001096160000008000060003013005000000000000
 let mypuzzleorg01132017averyhard ='357081096160390578000567013013605980500008360600903145721839654830000729940700831';
 let mypuzzleorg01062017veryhard = '165378249478259136239006008380504092000097384094823010013982460900701803800035901';
 let finnedxwing = '900040000704080050080000100007600820620400000000000019000102000890700000000050003';
+let sashimifinnedxwing = '300012598001080763080700241700001380003870010108200075519308027030190850804520139';
 
 let SpecialSet = require('./specialset.js');    
     
@@ -1549,7 +1550,7 @@ class Board {
                         let match = cleanCandidates.get(cleanIndexStr);
                         if (match) {
                             let xwingCells = match.union(set);
-                            console.log(`!!found normal X-Wing for possible ${p} by ${dir}, cells: ${Cell.outputCellList(xwingcells)}`);
+                            console.log(`!!found normal X-Wing for possible ${p} by ${dir}, cells: ${Cell.outputCellList(xwingCells)}`);
                         } else {
                             cleanCandidates.set(cleanIndexStr, set);
                             let pos0 = Cell.calcTilePosition(dir, pair[0].tileNum);
@@ -1584,11 +1585,12 @@ class Board {
                             let singles = [];
                             let fins = [];
                             for (let [tileIndex, cellSet] of tileMap) {
+                                let tIndex = Cell.calcTilePosition(dir, tileIndex);
                                 if (cellSet.size === 1) {
                                     let cell = cellSet.getFirst();
-                                    singles.push({pos: cell.getPosition(dir), cellSet: cellSet, tileIndex: tileIndex, p: p});
+                                    singles.push({pos: cell.getPosition(dir), cellSet: cellSet, tileIndex: tIndex, p: p});
                                 } else {
-                                    fins.push({tileIndex, cellSet, p});
+                                    fins.push({tileIndex: tIndex, cellSet, p});
                                 }
                             }
                             if (singles.length === 2) {
@@ -1961,7 +1963,8 @@ if (process.argv[2]) {
     // b = new Board(mypuzzleorg01032017veryhard);   
 //    b = new Board("051347800400000005000506000023408650580000041004005200007000500900750006005962700"); 
 //    b = new Board(phone1);
-      b = new Board(finnedxwing);
+//      b = new Board(finnedxwing);
+      b = new Board(sashimifinnedxwing);
       
 }
 
@@ -1972,6 +1975,9 @@ b.outputBoard();
 b.outputPossibles(true);
 while(b.setAllPossibles()) {}
 
+// FIXME: this is only for the sashimifinnedxwing puzzle for testing purposes
+b.getCell(3,1).possibles.delete(4);
+
 let processMethods = [
     "processNakedPairs",
     "processNakedTriplesQuads",
@@ -1980,6 +1986,7 @@ let processMethods = [
     "processXwing",
     "processSwordfish",
 //    "processXYWing",
+
     "processXWingFinned"
 ];
 

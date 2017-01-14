@@ -1560,9 +1560,9 @@ class Board {
                                 //     and second tileIndex with first position
                                 // Either can be a match so we put them both in the map
                                 let tileIndexStr = `${p}:${pos0},${pair[1].getPosition(dir)}`;
-                                cleanCandidatesTileIndex.set(tileIndexStr, set);
+                                cleanCandidatesTileIndex.set(tileIndexStr, {set, rowcol: i});
                                 tileIndexStr = `${p}:${pos1},${pair[0].getPosition(dir)}`;
-                                cleanCandidatesTileIndex.set(tileIndexStr, set);
+                                cleanCandidatesTileIndex.set(tileIndexStr, {set, rowcol: i});
                             }
                         }
                     }
@@ -1586,18 +1586,18 @@ class Board {
                             for (let [tileIndex, cellSet] of tileMap) {
                                 if (cellSet.size === 1) {
                                     let cell = cellSet.getFirst();
-                                    singles.push({pos: cell.getPosition(dir), cellSet: cellSet, tileIndex: tileIndex});
+                                    singles.push({pos: cell.getPosition(dir), cellSet: cellSet, tileIndex: tileIndex, p: p});
                                 } else {
-                                    fins.push({tileIndex, cellSet});
+                                    fins.push({tileIndex, cellSet, p});
                                 }
                             }
                             if (singles.length === 2) {
                                 // both singles, we can make two separate entries because either cell can act as the fin
-                                finnedCandidates.push({indexStr: `${p}:${singles[0].tileIndex},${singles[1].pos}`, fin: singles[0].cellSet, cell: singles[1].cellSet.getFirst()});
-                                finnedCandidates.push({indexStr: `${p}:${singles[1].tileIndex},${singles[0].pos}`, fin: singles[1].cellSet, cell: singles[0].cellSet.getFirst()});
+                                finnedCandidates.push({indexStr: `${p}:${singles[0].tileIndex},${singles[1].pos}`, fin: singles[0].cellSet, cell: singles[1].cellSet.getFirst(), p: p, dir: dir, rowcol: i});
+                                finnedCandidates.push({indexStr: `${p}:${singles[1].tileIndex},${singles[0].pos}`, fin: singles[1].cellSet, cell: singles[0].cellSet.getFirst(), p: p, dir: dir, rowcol: i});
                             } else if (fins.length === 1) {
                                 // must be one fin and one single - make one entry with the fin and single
-                                finnedCandidates.push({indexStr:`${p}:${fins[0].tileIndex},${singles[0].pos}`, fin: fins[0].cellSet, cell: singles[0].cellSet.getFirst()});
+                                finnedCandidates.push({indexStr:`${p}:${fins[0].tileIndex},${singles[0].pos}`, fin: fins[0].cellSet, cell: singles[0].cellSet.getFirst(), p: p, dir: dir, rowcol: i});
                             }
                         }
                     }
@@ -1610,9 +1610,11 @@ class Board {
             if (finnedCandidates.length && cleanCandidatesTileIndex.size) {
                 for (let finItem of finnedCandidates) {
                     if (cleanCandidatesTileIndex.has(finItem.indexStr)) {
-                        // FIXME: add better console output so we can see exactly what each match is
                         // FIXME: I think each row for an x-wing must be in a separate tile
-                        console.log("found finned match: ", finItem, cleanCandidatesTileIndex.get(finItem.indexStr));
+                        let clean = cleanCandidatesTileIndex.get(finItem.indexStr);
+                        if (clean.rowcol !== finItem.rowcol) {
+                            console.log(`found finned X-Wing: ${dir}, possible ${finItem.p}, finCells: ${Cell.outputCellList(finItem.fin)}, single: ${finItem.cell.xy()}, other: ${Cell.outputCellList(clean.set)}`)
+                        }
                     }
                 }
             }

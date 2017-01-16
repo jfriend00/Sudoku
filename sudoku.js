@@ -694,6 +694,9 @@ class Board {
     }
     
     // can be passed either (row, col) or (tileNum)
+    // can be called as either of:
+    // getOpenCellsTile(row, col)
+    // getOpenCellsTile(tileNum) {
     getOpenCellsTile(row, col) {
         let results = [], tileNum;
         
@@ -714,11 +717,11 @@ class Board {
     // returns an array of cells
     // This accepts either (row, col, returnSet) or (cell, returnSet)
     // returnSet is optional
-    getOpenCellsBuddies(r, c, rs) {
-        let row = r, col = c, returnSet = rs, cell = r;
-        if (r instanceof Cell) {
+    getOpenCellsBuddies(rowArg, colArg, returnSetArg) {
+        let row = rowArg, col = colArg, returnSet = returnSetArg, cell = rowArg;
+        if (cell instanceof Cell) {
             // args must have been (cell, returnSet)
-            returnSet = c;
+            returnSet = colArg;
             row = cell.row;            
             col = cell.col;
         }
@@ -1521,6 +1524,9 @@ class Board {
 
         function run(dir) {
             
+            let dirProp = dir === "row" ? "row" : "col";
+            let dirOppositeProp = dir === "row" ? "col" : "row";
+            
             // this is indexed by a string that indicates what possible number and cells it could be an x-wing for
             //    of this form: "1:4,8" which means possible value 1 in positions 4 and 8
             // The value in the mapis an array of sets of pairs of cells that are the only pair 
@@ -1565,9 +1571,9 @@ class Board {
                                 let col0 = pair[0].getPosition(dir);
                                 let col1 = pair[1].getPosition(dir);
                                 let tileIndexStr = `${p}:${tilepos0},${col1}`;
-                                cleanCandidatesTileIndex.set(tileIndexStr, {set, rowcol: i, finMatchColumn: col0});
+                                cleanCandidatesTileIndex.set(tileIndexStr, {set, rowcol: i, finMatchColumn: col0, finMatchCell: pair[0]});
                                 tileIndexStr = `${p}:${tilepos1},${col0}`;
-                                cleanCandidatesTileIndex.set(tileIndexStr, {set, rowcol: i, finMatchColumn: col1});
+                                cleanCandidatesTileIndex.set(tileIndexStr, {set, rowcol: i, finMatchColumn: col1, finMatchCell: pair[1]});
                             }
                         }
                     }
@@ -1590,13 +1596,13 @@ class Board {
                             let fins = [];
                             // do a pass through the tileMap to load each entry into either the 
                             // singles array or the fins array
-                            for (let [tileIndex, cellSet] of tileMap) {
-                                let tilePos = Cell.calcTilePosition(dir, tileIndex);
+                            for (let [tileNum, cellSet] of tileMap) {
+                                let tilePos = Cell.calcTilePosition(dir, tileNum);
                                 if (cellSet.size === 1) {
                                     let cell = cellSet.getFirst();
-                                    singles.push({pos: cell.getPosition(dir), cellSet, tilePos, tileIndex, p});
+                                    singles.push({pos: cell.getPosition(dir), cellSet, tilePos, tileNum, p});
                                 } else {
-                                    fins.push({cellSet, tilePos, tileIndex, p});
+                                    fins.push({cellSet, tilePos, tileNum, p});
                                 }
                             }
                             // now build the finnedCandidates array
@@ -1606,6 +1612,7 @@ class Board {
                                 finnedCandidates.push({
                                     indexStr: `${p}:${singles[0].tilePos},${singles[1].pos}`, 
                                     fin: singles[0].cellSet, 
+                                    finTileNum: singles[0].tileNum,
                                     cell: singles[1].cellSet.getFirst(), 
                                     p: p, 
                                     dir: dir, 
@@ -1615,6 +1622,7 @@ class Board {
                                 finnedCandidates.push({
                                     indexStr: `${p}:${singles[1].tilePos},${singles[0].pos}`, 
                                     fin: singles[1].cellSet, 
+                                    fileTileNum: singles[1].tileNum,
                                     cell: singles[0].cellSet.getFirst(), 
                                     p: p, 
                                     dir: dir, 
@@ -1625,6 +1633,7 @@ class Board {
                                 finnedCandidates.push({
                                     indexStr:`${p}:${fins[0].tilePos},${singles[0].pos}`, 
                                     fin: fins[0].cellSet, 
+                                    finTileNum: fins[0].tileNum,
                                     cell: singles[0].cellSet.getFirst(), 
                                     p: p, 
                                     dir: dir, 
@@ -1637,12 +1646,18 @@ class Board {
                 }
                 
             });
-            // at this point, we have all the cleanCandidates and finnedCandidates for this row or column iteration
+            // at this point, we have all the cleanCandidates and finnedCandidates for all the rows or columns (whichever it is we are iterating)
             // we can compare a cleanCandidate with a finnedCandidate to find a finned x-wing match
             if (finnedCandidates.length && cleanCandidatesTileIndex.size) {
+                // for each finned candidate, see if there's a matching cleanCandidate
                 for (let finItem of finnedCandidates) {
                     if (cleanCandidatesTileIndex.has(finItem.indexStr)) {
-                        // FIXME: I think each row for an x-wing must be in a separate tile
+                        // FIXME: http://hodoku.sourceforge.net/en/tech_sdp.php says the the elimination strategy is to eliminate
+                        // any possibles that can see both the fin cell and the corresponding clean single which eliminates
+                        // some additional possibles in the tile of the corresponding clean single (the ones in the same column as the fin)
+                        // This page does not talk about a multi-value fin
+                        // It says to eliminate the candidate possible in intersection of the buddies of the fin cell and the corresponding
+                        // clean single cell.  So, we'd just get both sets of buddies and intersect them both and eliminate in that group of cells.
                         let clean = cleanCandidatesTileIndex.get(finItem.indexStr);
                         if (clean.rowcol !== finItem.rowcol) {
                             // Reminder: example "1:0,8" which means possible value 1 in tileIndex 0 and column 8
@@ -1669,19 +1684,44 @@ class Board {
                                 // the fine tile that have the same column or row as the corner
                                 // clean.finMatchColumn is the column we want to be clearing from
                                 // we can get the tileNum from any cell in the fin
+                                
+                                if (finItem.fin.size > 1) {
+                                    // clear possible finItem.p that are in finItem.finTileNum and in clean.finMatchColumn
+                                    // but are not in the cells in finItem.fin or clean.set
+                                    let cells = new SpecialSet(this.getOpenCellsTile(finItem.finTileNum).filter(c => {
+                                        return c[dirOppositeProp] === clean.finMatchColumn;
+                                    }));
+                                    cells.remove(finItem.fin);
+                                    cells.remove(clean.set);
+                                    possiblesCleared += this.clearListOfPossibles(cells, [finItem.p], 1)
+                                } else {
+                                    // http://hodoku.sourceforge.net/en/tech_sdp.php shows how a single fin cell can clear more
+                                    // than the above case.  
+                                    // FIXME: This single fin cell can exist with or without the fin corner,
+                                    //    but it does not appear the extra elimination works if there are multiple cells in the fin
+                                    //    not counting the corner cell
+                                    // For a single fin cell, intersect its buddies with the buddies of the 
+                                    // corresponding clean cell and clear all of this possible from the overlapping buddies
+                                    let finCell = finItem.fin.getFirst();
+                                    let cleanCell = clean.finMatchCell;
+                                    let finBuddies = this.getOpenCellsBuddies(finCell, true);
+                                    let cleanBuddies = this.getOpenCellsBuddies(cleanCell, true);
+                                    let cellsToClear = finBuddies.intersection(cleanBuddies);
+                                    cellsToClear.delete(finCell);
+                                    cellsToClear.delete(cleanCell);
+                                    possiblesCleared += this.clearListOfPossibles(cellsToClear, [fintItem.p], 1);
+                                }
+                                
                             }
                         }
                     }
                 }
             }
-            
-            return 0;
-
         }
         
         // analyze both rows and columns
-        possiblesCleared += run.call(this, "row");
-        possiblesCleared += run.call(this, "column");
+        run.call(this, "row");
+        run.call(this, "column");
         return possiblesCleared;
     }
 
@@ -2002,23 +2042,26 @@ class Board {
 
 }
 
+let platinumBlondeHardestSudoku = '.......12........3..23..4....18....5.6..7.8.......9.....85.....9...4.5..47...6...';
 
 
 let b;
 if (process.argv[2]) {
     b = new Board(process.argv[2]);
 } else {
-    // b = new Board(boards[2]);
+//     b = new Board(boards[2]);
     // b = new Board(xywing2);
     // b = new Board(nakedPair1);
     // b = new Board(hiddenTriplet);
-    // b = new Board(mypuzzleorg01022017veryhard);
+//     b = new Board(mypuzzleorg01022017veryhard);
     // b = new Board(nakedTriplet1);
-    // b = new Board(mypuzzleorg01032017veryhard);   
+//    b = new Board(mypuzzleorg01032017veryhard);   
 //    b = new Board("051347800400000005000506000023408650580000041004005200007000500900750006005962700"); 
 //    b = new Board(phone1);
-//      b = new Board(finnedxwing);
-      b = new Board(sashimifinnedxwing);
+    b = new Board(finnedxwing);
+//    b = new Board(sashimifinnedxwing);
+//    b = new Board(platinumBlondeHardestSudoku);
+
       
 }
 
@@ -2029,8 +2072,6 @@ b.outputBoard();
 b.outputPossibles(true);
 while(b.setAllPossibles()) {}
 
-// FIXME: this is only for the sashimifinnedxwing puzzle for testing purposes
-b.getCell(3,1).possibles.delete(4);
 
 let processMethods = [
     "processNakedPairs",
@@ -2039,8 +2080,7 @@ let processMethods = [
     "processHiddenSubset",
     "processXwing",
     "processSwordfish",
-//    "processXYWing",
-
+    "processXYWing",
     "processXWingFinned"
 ];
 

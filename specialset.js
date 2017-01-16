@@ -81,6 +81,21 @@ class SpecialSet extends Set {
         return cnt;
     }
     
+    // Returns a new set with the non-filtered elements in it
+    // The callback fn returns true to keep an element
+    // The callback function is passed the element to be tested
+    // This is meant to work similarly to [1,2,3].filter(...)
+    filter(fn) {
+        let newSet = new SpecialSet();
+        // copy over elements that pass the filter
+        for (let item of this) {
+            if (fn(item) === true) {
+                newSet.add(item);
+            }
+        }
+        return newSet;
+    }
+    
     // returns boolean whether every element in this set is in otherSet
     isSubsetOf(otherSet) {
         for (let key of this) {

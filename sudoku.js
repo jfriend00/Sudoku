@@ -1,4 +1,7 @@
 const utils = require('./utils.js');
+const sudokuPatternInfo = require('./sudoku-patterns.js');
+const patterns = sudokuPatternInfo.patterns;
+let SpecialSet = require('./specialset.js');    
 
         // http://www.stolaf.edu/people/hansonr/sudoku/12rules.htm
         // technique names
@@ -103,225 +106,7 @@ const boardSize = 9;
 const tileSize = Math.sqrt(boardSize);
 
 
-const boards = [
- [7,8,0,1,0,0,4,0,0,
-  5,0,6,0,3,7,0,0,1,
-  0,0,3,0,0,0,0,6,0,
-  9,7,0,0,6,0,3,0,0,
-  6,0,0,3,0,4,0,5,0,
-  3,5,0,0,1,9,0,0,4,
-  0,0,9,0,0,0,5,0,0,
-  2,6,5,8,9,0,0,0,0,
-  0,3,7,0,4,5,2,0,0],
-  
-  [0,0,0,8,0,0,0,0,1,
-   2,0,0,0,3,4,9,6,0,
-   3,0,4,0,9,0,0,0,2,
-   0,0,5,3,0,6,0,0,0,
-   0,4,0,0,0,0,5,0,0,
-   7,0,2,1,0,0,0,0,0,
-   9,5,0,2,0,0,0,4,0,
-   0,0,7,4,6,5,0,0,0,
-   4,0,3,0,8,0,0,2,0],
- 
-  [0,0,0,5,0,0,2,0,7,    // this is a very hard one
-   0,9,0,0,0,0,4,0,0,
-   7,0,6,0,0,4,0,8,3,
-   0,4,0,0,5,0,0,0,8,
-   0,0,9,4,0,3,7,0,0,
-   5,0,0,0,8,0,0,2,0,
-   1,6,0,2,0,0,3,0,9,
-   0,0,4,0,0,0,0,7,0,
-   9,0,7,0,0,1,0,0,0],
 
-  [0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0],
-
-  [0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0]
-];
-
-let myPuzzleOrgDiabolic01092017 =
-   `3.....869
-    ...2...7.
-    ..9.....5
-    21..3.9..
-    ....4....
-    ..5.8..13
-    5.....2..
-    .7...6...
-    846.....1`;
-
-// from my samsung smartphone sudoku app set on Expert    
-let phone1 = 
-   `000300290
-    050070610
-    006009740
-    100800307
-    670123409
-    000704060
-    020000536
-    860030070
-    003600004`;
-    
-
-let myPuzzleOrgVeryHard01092017 = 
-   `32.416.89
-    ..8...3..
-    ...3.5...
-    4.......7
-    ..36.14..
-    5...2...3
-    71..5..64
-    .........
-    8.6.4.2.1`;
-
-let nakedPair1 = 
-   `32...14..
-    9..4.2..3
-    ..6.7...9
-    8.1..5...
-    ...1.6...
-    ...7..1.8
-    1...9.5..
-    2..8.4..7
-    ..45...31`;
-    
-let nakedPair2 = 
-   `7.....2.1
-    ..38.7...
-    26.....5.
-    6.19..4..
-    .2.....8.
-    ..4..29.6
-    .3.....49
-    ...1.58..
-    8.6.....7`;
-    
-let nakedTriplet1 = 
-   `..8.1....
-    23...9...
-    5....8.2.
-    ..5.2..8.
-    3.......6
-    .8..9.5..
-    .4.6....9
-    ...3...14
-    ....8.7..`;
-    
-let blockBlock1 = 
-    `.....3948
-    3.9..85..
-    ..4.....2
-    5..9.....
-    ..7.1.6..
-    .....7..1
-    6.....1..
-    ..87..2.9
-    1753.....`;
-
-// Go to http://www.sudokuwiki.org/sudoku.htm for help solving specific puzzles and seeing
-// each algorithm applied    
-// after removing some other things, the hidden triple is {3,5,6}:
-// (5,1) {3,4,5,6}    
-// (5,3) {1,4,5,6}
-// (5,8) {3,5,6}
-let hiddenTriplet = `
-    .971..34.
-    .1.23...7
-    8..7.....
-    ..9..2...
-    .2.5.3.7.
-    ...8..2..
-    .....6..4
-    9...57.6.
-    .63..185.`;
-
-let hiddenQuad = `
-    5.26..7..
-    ...9...1.
-    ......385
-    ..4.961..
-    .........
-    ..527.9..
-    837......
-    .6...9...
-    ..9..82.3`;
-    
-// xwing with 6 from (2,2)-(2,3) to (8,2)-(8,3)    
-// allows you to clear all other possible 6 from colummsn 2 and 3
-let xwing1 = `
-    ...13...5     
-    .4....2..
-    8..9.....
-    ....5.9..
-    ..2...4..
-    ..3.6....
-    .....3..6
-    ..5....1.
-    7...28...`;
-    
-let swordfish1 = `
-    ...47.6..
-    ..4...3.5
-    92.......
-    .31......
-    ...936...
-    ......28.
-    .......16
-    4.8...9..
-    ..7.52...`;
-    
-let xywing1 = `
-    .9.......
-    ......678
-    ....63.5.
-    ...3.....
-    ..8.5.2.1
-    ..529.3..
-    ..9..5...
-    8...34...
-    3.2..8..4`;    
-
-// also contains triplets (5, 0), (5, 1), (5, 8) and (7, 1), (7, 3), (7, 8)    
-let xywing2 = `
-    684.7....
-    3......7.
-    ...51....
-    8..4..1..
-    .51.8.96.
-    ..7..6..2
-    ....45...
-    .9......5
-    ....2.843`;    
-
-// 1-9-2017 on http://mypuzzle.org/sudoku, set to Diabolic (as of 1/10, still 40 cells open in my code)  
-// requires multiple naked XY-Chains to solve  
-let hardOnline1 = '320000869050200374009000125210635907000040002005082013500000206072006008846020701';
-let hardOnline2 = '340007096000040307279306084003125009001070603790634015004762938900483001837591462';
-let mypuzzleorg01022017veryhard = '207080006040002079500000004002030000000105000000020100800000007650900020900060805';
-let mypuzzleorg01032017veryhard = '010070640200009000009500700020000000600703005000000030001002900000800001067090050';
-let mypuzzleorg01132017veryhard = '307001096160000008000060003013005000000000000000900140700030000800000029940700801';    
-let mypuzzleorg01132017averyhard ='357081096160390578000567013013605980500008360600903145721839654830000729940700831';
-let mypuzzleorg01062017veryhard = '165378249478259136239006008380504092000097384094823010013982460900701803800035901';
-let finnedxwing = '900040000704080050080000100007600820620400000000000019000102000890700000000050003';
-let sashimifinnedxwing = '300012598001080763080700241700001380003870010108200075519308027030190850804520139';
-
-let SpecialSet = require('./specialset.js');    
     
 
 class SpecialMap extends Map {
@@ -386,16 +171,13 @@ const allValuesSet = new SpecialSet(allValues);
 
 // some utils
 
-function showCellCollection(collection) {
+function cellsToStr(collection) {
     let results = [];
     for (let cell of collection) {
         results.push(cell.xy());
     }
     return results.join(" ");
 }
-
-// shortcut definition
-let sc = showCellCollection;
 
 // a single cell in the board
 class Cell {
@@ -1195,7 +977,7 @@ class Board {
                         union.addTo(cell.possibles);
                     }
                     if (union.size === len) {
-                        console.log(`found ${utils.makeQtyStr(len)} {${union.toNumberString()}} in cells ${sc(combo)}`);
+                        console.log(`found ${utils.makeQtyStr(len)} {${union.toNumberString()}} in cells ${cellsToStr(combo)}`);
                         // clear all possibles in the union from the other cells on the set
                         let exclusionCells = new SpecialSet(cells);
                         exclusionCells.remove(combo);
@@ -1244,7 +1026,7 @@ class Board {
                         if (union.size === 1) {
                             // all the matched cells must all be in the same row/col here
                             // can clear other possibles from this row/col
-                            console.log(`found pointing ${set.size === 2 ? "pair" : "triple"} for possible ${p} consisting of ${sc(set)}`);
+                            console.log(`found pointing ${utils.makeQtyStr(set.size)} for possible ${p} consisting of ${cellsToStr(set)}`);
                             // now clear things - get the open cells in this row or col
                             let clearCells = new SpecialSet(this.getOpenCellsX(dir, union.getFirst()));
                             // remove any from this tile
@@ -1315,7 +1097,8 @@ class Board {
                 // test for manufactured quads
                 pCleared = makeSubsets(set, otherCellSet, 4);
                 possiblesCleared += pCleared;
-                if (pCleared) return "again";
+                // can't be two quads in the same row/col so we just return here
+                if (pCleared) return;
             }
         });
         
@@ -1709,7 +1492,7 @@ class Board {
                                     let cellsToClear = finBuddies.intersection(cleanBuddies);
                                     cellsToClear.delete(finCell);
                                     cellsToClear.delete(cleanCell);
-                                    possiblesCleared += this.clearListOfPossibles(cellsToClear, [fintItem.p], 1);
+                                    possiblesCleared += this.clearListOfPossibles(cellsToClear, [finItem.p], 1);
                                 }
                                 
                             }
@@ -1887,7 +1670,6 @@ class Board {
                 });
             }
         });
-        console.log(`XYWing returning ${possiblesCleared} as number of possibles cleared`);
         return possiblesCleared;
         
     }
@@ -2049,20 +1831,7 @@ let b;
 if (process.argv[2]) {
     b = new Board(process.argv[2]);
 } else {
-//     b = new Board(boards[2]);
-    // b = new Board(xywing2);
-    // b = new Board(nakedPair1);
-    // b = new Board(hiddenTriplet);
-//     b = new Board(mypuzzleorg01022017veryhard);
-    // b = new Board(nakedTriplet1);
-//    b = new Board(mypuzzleorg01032017veryhard);   
-//    b = new Board("051347800400000005000506000023408650580000041004005200007000500900750006005962700"); 
-//    b = new Board(phone1);
-    b = new Board(finnedxwing);
-//    b = new Board(sashimifinnedxwing);
-//    b = new Board(platinumBlondeHardestSudoku);
-
-      
+    b = new Board(patterns.b1);      
 }
 
 // keep setting possibles while we still find more values to set

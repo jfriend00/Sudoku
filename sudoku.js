@@ -1,7 +1,8 @@
 const utils = require('./utils.js');
 const sudokuPatternInfo = require('./sudoku-patterns.js');
 const patterns = sudokuPatternInfo.patterns;
-let SpecialSet = require('./specialset.js');    
+const unsolved = sudokuPatternInfo.unsolved;
+const SpecialSet = require('./specialset.js');    
 
         // http://www.stolaf.edu/people/hansonr/sudoku/12rules.htm
         // technique names
@@ -284,9 +285,14 @@ class Board {
             return new Cell(item, rowCntr, colCntr++, index, this);
         });
     }
-    
-    checkBoard() {
+
+    // returns the number of open cells (0 means the board is solved);
+    // options is an optional argument
+    // {skipSinglePossible: true}
+    checkBoard(options) {
+        options = options || {};
         let conflicts = new SpecialSet();
+        let openCells = new SpecialSet();
         
         function error(cell, msg) {
             conflicts.add(cell);
@@ -313,8 +319,11 @@ class Board {
                         assignedVals.add(cell.value);
                     }
                 } else {
-                    if (cell.possibles.size === 1) {
-                        error(cell, `cells has a single possible and no value`);
+                    openCells.add(cell);
+                    if (!options.skipSinglePossible) {
+                        if (cell.possibles.size === 1) {
+                            error(cell, `cells has a single possible and no value`);
+                        }
                     }
                     possibleVals.addTo(cell.possibles);
                     if (cell.possibles.size === 0) {
@@ -335,8 +344,15 @@ class Board {
         });
         
         if (conflicts.size === 0) {
-            console.log("Board is valid");
+            if (openCells.size === 0) {
+                console.log("Board is solved");
+            } else {
+                console.log(`Board is valid, still ${openCells.size} open cells`);
+            }
+        } else {
+            throw new Error("Board errors");
         }
+        return openCells.size;
     }
     
     // iterates a row and calls the callback once for each cell in the row
@@ -1713,12 +1729,12 @@ class Board {
         let all = [];
         for (let i = 0; i < boardSize; i++) {
             let row = [];
-            b.iterateRow(i, (cell, index) => {
+            this.iterateRow(i, (cell, index) => {
                 row.push(cell.value);
             });
             all.push(row.join(""));
         }
-        console.log(all.join(""));
+        return all.join("");
     }
     
     outputPossibles(always) {
@@ -1740,7 +1756,6 @@ class Board {
         });
         
         if (!foundPossibles && !always) {
-            console.log("Board solved - no possibles");
             return;
         }
         
@@ -1808,72 +1823,116 @@ class Board {
         outputGrid.forEach(row => {
             console.log(row.join(""));
         });
-        
-        
-/*      
-        for (let i = 0; i < boardSize; i++) {
-            let row = [];
-            b.iterateRow(i, (cell, index) => {
-                row.push(JSON.stringify(Array.from(cell.possibles)));
-            });
-            console.log(row.join(","));
-        } 
-*/        
-        
     }
 
 }
 
-let platinumBlondeHardestSudoku = '.......12........3..23..4....18....5.6..7.8.......9.....85.....9...4.5..47...6...';
+
+// Idea for a new scheme based on the x-cycles concept is that you find a cell with two possibles and you try each value in it
+// and then remove any possibles that are removed from both tries.  Identify a strong link (a possible value that only has 
+// one other possible value in the same row/col/tile
 
 
-let b;
-if (process.argv[2]) {
-    b = new Board(process.argv[2]);
-} else {
-    b = new Board(patterns.b1);      
-}
+function runBoard(boardStr, name) {
+    if (name) {
+        console.log(`Running board ${name}`);
+    }
+    let b = new Board(boardStr);
 
-// keep setting possibles while we still find more values to set
-// this could be made faster by only revisiting impacted cells
-console.log("Initial Board import/export:");
-b.outputBoard();
-b.outputPossibles(true);
-while(b.setAllPossibles()) {}
+    // keep setting possibles while we still find more values to set
+    // this could be made faster by only revisiting impacted cells
+    console.log("Initial Board import/export:");
+    console.log(b.outputBoard());
+    b.outputPossibles(true);
+    while(b.setAllPossibles()) {}
 
 
-let processMethods = [
-    "processNakedPairs",
-    "processNakedTriplesQuads",
-    "processPointingPairsTriples",
-    "processHiddenSubset",
-    "processXwing",
-    "processSwordfish",
-    "processXYWing",
-    "processXWingFinned"
-];
+    let processMethods = [
+        "processNakedPairs",
+        "processNakedTriplesQuads",
+        "processPointingPairsTriples",
+        "processHiddenSubset",
+        "processXwing",
+        "processSwordfish",
+        "processXYWing",
+        "processXWingFinned"
+    ];
 
-let more = 0;
-do {
-    console.log(`Still ${b.countOpen()} open cells`);
-    b.outputPossibles();
-    b.processSingles();
-    b.outputPossibles();
-    let method;
-    for (let pIndex = 0; pIndex < processMethods.length; ++pIndex) {
-        // Call all process methods until one returns that it changed something
-        // then start back at the beginning to reproces the simpler look at possibles
-        // If we get through all of them with nothing changing, then we're done
-        b.processSingles();
+    let openCells;
+    try {
+        let more = 0;
+        do {
+            console.log(`Still ${b.countOpen()} open cells`);
+            b.outputPossibles();
+            b.processSingles();
+            b.outputPossibles();
+            let method;
+            for (let pIndex = 0; pIndex < processMethods.length; ++pIndex) {
+                // Call all process methods until one returns that it changed something
+                // then start back at the beginning to reproces the simpler look at possibles
+                // If we get through all of them with nothing changing, then we're done
+                b.processSingles();
+                b.outputPossibles();
+                method = processMethods[pIndex];
+                more = b[method]();
+                if (b.checkBoard({skipSinglePossible: true}) === 0) {
+                    // we are done, make sure more is 0 and break
+                    more = 0;
+                    break;
+                }
+                if (more) break;
+            }
+        } while (more);
+        openCells = b.checkBoard();
+    } catch(e) {
         b.outputPossibles();
-        method = processMethods[pIndex];
-        more = b[method]();
-        if (more) break;
+        console.log("Final Board:", b.outputBoard());
+        throw e;
     }
-} while (more);
-console.log(`Still ${b.countOpen()} open cells`);
-b.checkBoard();
-b.outputPossibles();
-console.log("Final Board");
-b.outputBoard();
+    b.outputPossibles();
+    console.log("Final Board:", b.outputBoard());
+    if (openCells) {
+        console.log(`Still ${b.countOpen()} open cells`);
+    }
+    return openCells;
+}
 
+let arg = process.argv[2];
+let boardStr;
+if (arg) {
+    // argument can either be a sudoku board string or the name of a board already in our patterns file
+    if (arg.match(/^\d]/)) {
+        boardStr = arg;
+    } else {
+        boardStr = patterns[arg];
+    }
+}
+
+let openResults = [];
+if (boardStr) {
+    runBoard(boardStr);
+} else {
+    let boardNames = Object.keys(patterns);
+    for (name of boardNames) {
+        console.log("-----------------------------------------------------------------------------------------------------------------");
+            let numOpenCells = runBoard(patterns[name], name);
+            if (numOpenCells) {
+                openResults.push({name, numOpenCells});
+            }
+    }
+}
+console.log("-----------------------------------------------------------");
+let unexpected = [];
+for (let item of openResults) {
+    let expectedOpenCells = unsolved[item.name];
+    if (typeof expectedOpenCells === "undefined") {
+        unexpected.push(`Puzzle ${item.name} was unsolved, expecting it to be solved.`);
+    } else if (item.numOpenCells !== expectedOpenCells) {
+        unexpected.push(`Puzzle ${item.name} was unsolved, had ${item.numOpenCells} open cells, expected ${expectedOpenCells} open cells.`);
+    } else {
+        console.log(`Puzzle ${item.name} was unsolved as expected`);
+    }
+}
+
+console.log("-----------------------------------------------------------");
+console.log(unexpected.join("/d"));

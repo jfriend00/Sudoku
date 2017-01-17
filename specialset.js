@@ -3,42 +3,14 @@ class SpecialSet extends Set {
         super(arg);
     }
    
+// methods that modify this set all start with "addXX" or "removeXX"
+
+    // iterate through the pass iterable and all all those items to this set
+    // it's like .union(), but modifies the current set
     addTo(iterable) {
         for (let item of iterable) {
             this.add(item);
         }
-    }
-    
-    equals(otherSet) {
-        if (otherSet.size !== this.size) return false;
-        let equals = true;
-        for (let item of otherSet) {
-            if (!this.has(item)) {
-                equals = false;
-            }
-        }
-        return equals;
-    }
-    
-    // Get first value.  Since sets are unordered, this is useful only for getting the ONLY value in the set
-    getFirst() {
-        return this.values().next().value;
-    }
-    
-    toArray() {
-        return Array.from(this);
-    }
-    
-    toSortedArrayNumber() {
-        return this.toArray().sort((a,b) => a - b);
-    }
-    
-    toNumberString() {
-        return this.toSortedArrayNumber().join(",");
-    }
-    
-    toBracketString() {
-        return "{" + this.toNumberString() + "}";
     }
     
     // remove items in this set that are in the otherIterable
@@ -70,6 +42,7 @@ class SpecialSet extends Set {
     
     // pass callback function that returns true to keep, false to remove
     // The callback function is passed the element to be tested
+    // This is like .filter() except it modifies the current set
     removeCustom(fn) {
         let cnt = 0;
         for (let item of this) {
@@ -81,10 +54,51 @@ class SpecialSet extends Set {
         return cnt;
     }
     
+// all other methods, return some value and do not modify the underlying set
+
+    equals(otherSet) {
+        if (otherSet.size !== this.size) return false;
+        let equals = true;
+        for (let item of otherSet) {
+            if (!this.has(item)) {
+                equals = false;
+            }
+        }
+        return equals;
+    }
+    
+    // Get first value.  
+    // Since sets are unordered, this is useful only for getting the ONLY value in the set
+    //     when you know that set.size === 1 or when you just want any item in the set
+    getFirst() {
+        return this.values().next().value;
+    }
+    
+    toArray() {
+        return Array.from(this);
+    }
+
+    // returns a numerically sorted array of the members of the set
+    toSortedArrayNumber() {
+        return this.toArray().sort((a,b) => a - b);
+    }
+    
+    // returns a string representatino of the numerically sorted array of the members of the set
+    // such as "1,2,3"
+    toNumberString() {
+        return this.toSortedArrayNumber().join(",");
+    }
+    
+    // returns a representation of the set like: "{1,2,3}" - sorted numerically
+    toBracketString() {
+        return "{" + this.toNumberString() + "}";
+    }
+    
+    
+    // This is meant to work similarly to [1,2,3].filter(...)
     // Returns a new set with the non-filtered elements in it
     // The callback fn returns true to keep an element
     // The callback function is passed the element to be tested
-    // This is meant to work similarly to [1,2,3].filter(...)
     filter(fn) {
         let newSet = new SpecialSet();
         // copy over elements that pass the filter

@@ -1853,14 +1853,23 @@ class Board {
                         possiblesCleared += this.setValue(cell, p, 1);
                         break;
                     } else {
-                        this.log(`  Board OK after trying value, but not solved, nothing to conclude`);
+                        // try solving this board
+                        this.log(`  Solve attempt`);
+                        let numOpenCells = bAlt.solve({skipMethods: ["processXCyles"], skipCalcPossibles: true});
+                        if (numOpenCells === 0) {
+                            this.log(`  Board solved with this xcycle guess`);
+                            // FIXME: write code here to setValue into the main board
+                            break;
+                        } else {
+                            this.log(`  Board OK after trying value, but not solved, nothing to conclude`);
+                        }
                     }
                 } catch(e) {
                     // expected possible board error
                     if (e instanceof BoardError) {
                         tryOK = false;
                     } else {
-                        // programming error, don't eat this error
+                        // programming or unexpected error, don't eat this error
                         throw e;
                     }
                 }
@@ -1872,6 +1881,9 @@ class Board {
                 }
             }
         }
+        
+        // FIXME: things to try - Run the solver with all algorithms on bAlt in the above block of code and see what happens.
+        // Doing that will recursively try different guesses until the board fails.
         
         return possiblesCleared;
     }
@@ -2010,6 +2022,81 @@ class Board {
             this.log(row.join(""));
         });
     }
+    
+    // Solve the puzzle, returns number of openCells
+    // options 
+    //   skipCalcPossibles: true               for cloned boards that already have possibles calculated
+    //   skipMethods: [meth1, meth2]           array of method names to skip
+    solve(options = {}) {
+        // keep setting possibles while we still find more values to set
+        // this could be made faster by only revisiting impacted cells
+
+        let skipMethods;
+        if (typeof options.skipMethods === "string") {
+            skipMethods = new SpecialSet([options.skipMethods]);
+        } else {
+            skipMethods = new SpecialSet(options.skipMethods);
+        }
+        this.log("Initial Board import/export:");
+        this.log(this.outputBoard());
+        this.outputPossibles(true);
+        if (!options.skipCalcPossibles) {
+            while(this.setAllPossibles()) {}
+        }
+
+
+        let processMethods = [
+            "processNakedPairs",
+            "processNakedTriplesQuads",
+            "processPointingPairsTriples",
+            "processHiddenSubset",
+            "processXwing",
+            "processSwordfish",
+            "processXYWing",
+            "processXWingFinned",
+            "processXCyles"
+        ];
+
+        let openCells;
+        try {
+            let more = 0;
+            do {
+                this.log(`Still ${this.countOpen()} open cells`);
+                this.outputPossibles();
+                this.processSingles();
+                this.outputPossibles();
+                let method;
+                for (let pIndex = 0; pIndex < processMethods.length; ++pIndex) {
+                    // Call all process methods until one returns that it changed something
+                    // then start back at the beginning to reproces the simpler look at possibles
+                    // If we get through all of them with nothing changing, then we're done
+                    this.processSingles();
+                    this.outputPossibles();
+                    method = processMethods[pIndex];
+                    if (!skipMethods.has(method)) {
+                        more = this[method]();
+                        if (this.checkBoard({skipSinglePossible: true}) === 0) {
+                            // we are done, make sure more is 0 and break
+                            more = 0;
+                            break;
+                        }
+                        if (more) break;
+                    }
+                }
+            } while (more);
+            openCells = this.checkBoard();
+        } catch(e) {
+            this.outputPossibles();
+            this.log(`Final Board: ${name} ${this.outputBoard()}` );
+            throw e;
+        }
+        this.outputPossibles();
+        this.log(`Final Board: ${name} ${this.outputBoard()}` );
+        if (openCells) {
+            this.log(`Still ${this.countOpen()} open cells`);
+        }
+        return openCells;
+    }
 
 }
 
@@ -2025,64 +2112,7 @@ function runBoard(boardStr, name) {
         console.log(`Running board ${name}`);
     }
     let b = new Board(boardStr);
-
-    // keep setting possibles while we still find more values to set
-    // this could be made faster by only revisiting impacted cells
-    console.log("Initial Board import/export:");
-    console.log(b.outputBoard());
-    b.outputPossibles(true);
-    while(b.setAllPossibles()) {}
-
-
-    let processMethods = [
-        "processNakedPairs",
-        "processNakedTriplesQuads",
-        "processPointingPairsTriples",
-        "processHiddenSubset",
-        "processXwing",
-        "processSwordfish",
-        "processXYWing",
-        "processXWingFinned",
-        "processXCyles"
-    ];
-
-    let openCells;
-    try {
-        let more = 0;
-        do {
-            console.log(`Still ${b.countOpen()} open cells`);
-            b.outputPossibles();
-            b.processSingles();
-            b.outputPossibles();
-            let method;
-            for (let pIndex = 0; pIndex < processMethods.length; ++pIndex) {
-                // Call all process methods until one returns that it changed something
-                // then start back at the beginning to reproces the simpler look at possibles
-                // If we get through all of them with nothing changing, then we're done
-                b.processSingles();
-                b.outputPossibles();
-                method = processMethods[pIndex];
-                more = b[method]();
-                if (b.checkBoard({skipSinglePossible: true}) === 0) {
-                    // we are done, make sure more is 0 and break
-                    more = 0;
-                    break;
-                }
-                if (more) break;
-            }
-        } while (more);
-        openCells = b.checkBoard();
-    } catch(e) {
-        b.outputPossibles();
-        console.log(`Final Board: ${name} ${b.outputBoard()}` );
-        throw e;
-    }
-    b.outputPossibles();
-    console.log(`Final Board: ${name} ${b.outputBoard()}` );
-    if (openCells) {
-        console.log(`Still ${b.countOpen()} open cells`);
-    }
-    return openCells;
+    return b.solve();
 }
 
 let arg = process.argv[2];

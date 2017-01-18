@@ -192,6 +192,12 @@ class Cell {
         this.board = board;
     }
     
+    clone(newBoard) {
+        let newCell = new Cell(this.value, this.row, this.col, this.index, newBoard);
+        newCell.possibles = this.possibles.clone();
+        return newCell;
+    }
+    
     // calculates a hash of the possibles for a cell
     calcPossiblesHash() {
         // set has to be sorted to make predictable hash
@@ -211,7 +217,7 @@ class Cell {
         if (this.possibles.has(val)) {
             let level = nestLevel || 0;
             let leading = Array(level).fill(" ").join("");
-            console.log(leading + `removing possible ${val} from ${this.xy()}`, this.possibles);
+            this.board.log(leading + `removing possible ${val} from ${this.xy()}`, this.possibles);
             this.possibles.delete(val);
             this.dirty = true;
             /* 
@@ -267,23 +273,49 @@ class Cell {
         }
     }
     
+
+}
+
+class BoardError extends Error {
+    constructor(msg) {
+        super(msg);
+    }
 }
 
 class Board {
     constructor(board) {
-        // auto-convert string-formatted sdk Sudoku board format strings into arrays
-        if (typeof board === "string") {
-            // remove whitespace, convert "." to "0", split into array, then convert to numbers
-            board = board.replace(/\s/g, "").replace(/\./g, "0").split("").map(cell => +cell);
-        }
-        let rowCntr = 0, colCntr = 0;
-        this.data = board.map((item, index) => {
-            if (colCntr >= boardSize) {
-                ++rowCntr;
-                colCntr = 0;
+        this.data = [];
+        this.loggingEnabled = true;
+        if (board) {
+            // auto-convert string-formatted sdk Sudoku board format strings into arrays
+            if (typeof board === "string") {
+                // remove whitespace, convert "." to "0", split into array, then convert to numbers
+                board = board.replace(/\s/g, "").replace(/\./g, "0").split("").map(cell => +cell);
             }
-            return new Cell(item, rowCntr, colCntr++, index, this);
-        });
+            let rowCntr = 0, colCntr = 0;
+            this.data = board.map((item, index) => {
+                if (colCntr >= boardSize) {
+                    ++rowCntr;
+                    colCntr = 0;
+                }
+                return new Cell(item, rowCntr, colCntr++, index, this);
+            });
+        }
+    }
+    
+    // make a clone of this board
+    clone() {
+        let newBoard = new Board();
+        for (let cell of this.data) {
+            newBoard.data.push(cell.clone(newBoard));
+        }
+        return newBoard;
+    }
+    
+    log() {
+        if (this.loggingEnabled) {
+            console.log.apply(console, arguments);
+        }
     }
 
     // returns the number of open cells (0 means the board is solved);
@@ -293,10 +325,11 @@ class Board {
         options = options || {};
         let conflicts = new SpecialSet();
         let openCells = new SpecialSet();
+        let board = this;
         
         function error(cell, msg) {
             conflicts.add(cell);
-            console.log(`checkBoard() error ${msg}, ${cell.xy()}`);
+            board.log(`checkBoard() error ${msg}, ${cell.xy()}`);
         }
         
         this.iterateCellsByStructureAll((cells, tag, num) => {
@@ -345,12 +378,12 @@ class Board {
         
         if (conflicts.size === 0) {
             if (openCells.size === 0) {
-                console.log("Board is solved");
+                this.log("Board is solved");
             } else {
-                console.log(`Board is valid, still ${openCells.size} open cells`);
+                this.log(`Board is valid, still ${openCells.size} open cells`);
             }
         } else {
-            throw new Error("Board errors");
+            throw new BoardError("Board errors");
         }
         return openCells.size;
     }
@@ -724,9 +757,9 @@ class Board {
         }
         options.openOnly = false;
         let list = this.getAffectedCells(row, col, options);
-        list.forEach(cell => {
+        for (let cell of list) {
             fn.call(this, cell);
-        });
+        }
     }
 
     // iterate all intersecting row/col/tile cells that are not in the excludes list
@@ -739,10 +772,9 @@ class Board {
         }
         options.openOnly = true;
         let list = this.getAffectedCells(row, col, options);
-        list.forEach(cell => {
+        for (let cell of list) {
             fn.call(this, cell);
-        });
-        
+        }
     }
     
     setValue(cell, val, nestLevel) {
@@ -756,7 +788,7 @@ class Board {
         let totalCellsSet = 1;
         let level = nestLevel || 0;
         let leading = Array(level).fill(" ").join("");
-        console.log(leading + `setValue: ${cell.xy()} to ${val}`);
+        this.log(leading + `setValue: ${cell.xy()} to ${val}`);
         cell.setValue(val);
         totalCellsSet += this.clearBuddyPossibles(cell, level + 1);
         return totalCellsSet;
@@ -869,7 +901,7 @@ class Board {
             possibles.delete(cell.value);
         });
         
-        // console.log(`possibles ${homeCell.xy()}: `, possibles);
+        // this.log(`possibles ${homeCell.xy()}: `, possibles);
         return possibles;
     }
     
@@ -879,11 +911,11 @@ class Board {
             let possibles = cell.possibles = this.getPossibles(row, col);
             
             if (possibles.size === 0) {
-                console.log("board error: (" + row + ", " + col + ") has no possibles and no value");
+                this.log("board error: (" + row + ", " + col + ") has no possibles and no value");
             } else if (possibles.size === 1) {
                 // if only one possible, then set the value
                 cell.setValue(possibles.getFirst());
-                console.log(`Found (${row}, ${col}) has only one possible value of ${cell.value}`);
+                this.log(`Found (${row}, ${col}) has only one possible value of ${cell.value}`);
                 ++valuesSet;
             }
         });
@@ -895,7 +927,7 @@ class Board {
     // hidden single is when a there is no other cell in the column, row or tile that can have a given value
     //    then that value must be in this cell
     processSingles() {
-        console.log("Processing naked and hidden singles");
+        this.log("Processing naked and hidden singles");
         // Check each possible in row/col/tile to see if it is the only cell that could have that value
         // If so, set its value and clear possibles in all directions for that new value
         function run() {
@@ -906,7 +938,7 @@ class Board {
                 
                 // If only one possible value set it (naked single)
                 if (cell.possibles.size === 1) {
-                    console.log(`Found cell ${cell.xy()} with only one possible, setting value of ${cell.possibles.getFirst()}`);
+                    this.log(`Found cell ${cell.xy()} with only one possible, setting value of ${cell.possibles.getFirst()}`);
                     this.setValue(cell, cell.possibles.getFirst());
                     ++valuesSet;
                     return;
@@ -927,12 +959,12 @@ class Board {
                     // if all values are not accounted for, then that value MUST go in this cell
                     if (union.size !== boardSize) {
                         if (union.size !== (boardSize - 1)) {
-                            throw new Error(`Got bad union for possibles on cell ${cell.xy()}`);
+                            throw new BoardError(`Got bad union for possibles on cell ${cell.xy()}`);
                         }
                         // now figure out which value is missing
                         let missing = allValuesSet.difference(union);
                         let val = missing.getFirst();
-                        console.log(`Found ${cell.xy()} is only cell that can have ${val}`);
+                        this.log(`Found ${cell.xy()} is only cell that can have ${val}`);
                         valuesSet += this.setValue(cell, val);
                     }
                 });
@@ -950,7 +982,7 @@ class Board {
     // that value and their possibles for that value can be cleared
     processNakedPairs() {
         let possiblesCleared = 0;
-        console.log("Processing Naked Pairs");
+        this.log("Processing Naked Pairs");
         this.iterateOpenCellsByStructureAll(cells => {
             // here we have an array of cells to process (will be a row, column or tile)
             let pairs = new Map();
@@ -961,7 +993,7 @@ class Board {
                         // get other cell in the pair
                         let cell2 = pairs.get(hash);
                         // found a matching pair, so remove this pair from any other possibles in this cells array
-                        console.log(`found matching pair: ${cell2.xy()}, ${cell.xy()}`, cell.possibles)
+                        this.log(`found matching pair: ${cell2.xy()}, ${cell.xy()}`, cell.possibles)
                         
                         // for each cell in the array we are processing
                         // if it's not one of the cells in the pair, then clear each of the possible values from it
@@ -993,7 +1025,7 @@ class Board {
                         union.addTo(cell.possibles);
                     }
                     if (union.size === len) {
-                        console.log(`found ${utils.makeQtyStr(len)} {${union.toNumberString()}} in cells ${cellsToStr(combo)}`);
+                        this.log(`found ${utils.makeQtyStr(len)} {${union.toNumberString()}} in cells ${cellsToStr(combo)}`);
                         // clear all possibles in the union from the other cells on the set
                         let exclusionCells = new SpecialSet(cells);
                         exclusionCells.remove(combo);
@@ -1018,7 +1050,7 @@ class Board {
     // If there are only two cells or three cells in a tile that can contain a particular possible value and those cells
     // share a row or column, then that possible can be cleared from the rest of that row or column
     processPointingPairsTriples() {
-        console.log("Processing  Pointing Pairs/Triples");
+        this.log("Processing  Pointing Pairs/Triples");
         let possiblesCleared = 0;
 
         // for each possible value that is present in the tile, build a set of which cells it can be in
@@ -1042,7 +1074,7 @@ class Board {
                         if (union.size === 1) {
                             // all the matched cells must all be in the same row/col here
                             // can clear other possibles from this row/col
-                            console.log(`found pointing ${utils.makeQtyStr(set.size)} for possible ${p} consisting of ${cellsToStr(set)}`);
+                            this.log(`found pointing ${utils.makeQtyStr(set.size)} for possible ${p} consisting of ${cellsToStr(set)}`);
                             // now clear things - get the open cells in this row or col
                             let clearCells = new SpecialSet(this.getOpenCellsX(dir, union.getFirst()));
                             // remove any from this tile
@@ -1080,7 +1112,7 @@ class Board {
     //            of triples or quads you can with the original set of cells and then
     //            test each one to see if it's a legal triple or quad
     processHiddenSubset() {
-        console.log("Processing  Hidden Subset");
+        this.log("Processing  Hidden Subset");
         let possiblesCleared = 0, pCleared;
         
         // analyze all rows, columns and tiles
@@ -1101,17 +1133,17 @@ class Board {
                 // These returns are from the callback, not from the outer function
 
                 // test directly to see if it is a pair, triple or quad already (based on it's length)
-                pCleared = testSubset(set, otherCellSet);
+                pCleared = testSubset.call(this, set, otherCellSet);
                 possiblesCleared += pCleared;
                 if (pCleared) return "again";
                 
                 // test for manufactured triples
-                pCleared = makeSubsets(set, otherCellSet, 3);
+                pCleared = makeSubsets.call(this, set, otherCellSet, 3);
                 possiblesCleared += pCleared;
                 if (pCleared) return "again";
                 
                 // test for manufactured quads
-                pCleared = makeSubsets(set, otherCellSet, 4);
+                pCleared = makeSubsets.call(this, set, otherCellSet, 4);
                 possiblesCleared += pCleared;
                 // can't be two quads in the same row/col so we just return here
                 if (pCleared) return;
@@ -1133,7 +1165,7 @@ class Board {
                     candidateSet.addTo(cellsToTry);
                     let otherSet = new SpecialSet(otherCellSet);
                     otherSet.remove(cellsToTry);
-                    cnt += testSubset(candidateSet, otherSet);
+                    cnt += testSubset.call(this, candidateSet, otherSet);
                 }                    
             }
             return cnt;
@@ -1176,17 +1208,17 @@ class Board {
             // See if we have N possibles contained only in N cells
             if (candidateUnion.size === candidateSet.size) {
                 if (isHidden) {
-                    console.log(`found hidden subset ${utils.makeQtyStr(candidateSet.size)} with values {${candidateUnion.toNumberString()}} in ${Cell.outputCellList(candidateSet)}`);
+                    this.log(`found hidden subset ${utils.makeQtyStr(candidateSet.size)} with values {${candidateUnion.toNumberString()}} in ${Cell.outputCellList(candidateSet)}`);
                     // clear possibles in the candidateSet that are in the otherUnion
                     for (let cell of candidateSet) {
                         let removing = cell.possibles.intersection(otherUnion);
                         if (removing.size) {
-                            console.log(` removing possibles {${removing.toNumberString()}} from ${cell.xy()}`)
+                            this.log(` removing possibles {${removing.toNumberString()}} from ${cell.xy()}`)
                             cnt += cell.possibles.remove(removing);
                         }
                     }
                 } else {
-                    console.log(`found already processed naked ${utils.makeQtyStr(candidateSet.size)} with values {${candidateUnion.toNumberString()}} in ${Cell.outputCellList(candidateSet)}`);
+                    this.log(`found already processed naked ${utils.makeQtyStr(candidateSet.size)} with values {${candidateUnion.toNumberString()}} in ${Cell.outputCellList(candidateSet)}`);
                 }
             }
             return cnt;
@@ -1235,7 +1267,7 @@ class Board {
                 }
             });
             
-            // console.log("pMap", pMap);
+            // this.log("pMap", pMap);
             // pMap is the same type of pMap in processHiddenSubset()
             // it tells us which cells each possible is in within a given row or column
             
@@ -1273,7 +1305,7 @@ class Board {
                             rows = columns;
                             columns = temp;
                         }
-                        console.log(`Found x-wing pattern by ${type}: value=${digit} ` +
+                        this.log(`Found x-wing pattern by ${type}: value=${digit} ` +
                             `${this.getCell(rows[0], columns[0]).xy()}, ${this.getCell(rows[0], columns[1]).xy()}, ` + 
                             `${this.getCell(rows[1], columns[0]).xy()}, ${this.getCell(rows[1], columns[1]).xy()}`);
                             
@@ -1293,7 +1325,7 @@ class Board {
                                 if (index !== position1 && index !== position2) {
                                     // debug code, next three lines
                                     if (cell.possibles.has(digit)) {
-                                        console.log(`Removing possible ${digit} from ${cell.xy()}`, cell.possibles);
+                                        this.log(`Removing possible ${digit} from ${cell.xy()}`, cell.possibles);
                                     }
                                     if (!cell.value && cell.possibles.delete(digit)) {
                                         ++possiblesCleared;
@@ -1355,7 +1387,7 @@ class Board {
                         let match = cleanCandidates.get(cleanIndexStr);
                         if (match) {
                             let xwingCells = match.union(set);
-                            console.log(`!!found normal X-Wing for possible ${p} by ${dir}, cells: ${Cell.outputCellList(xwingCells)}`);
+                            this.log(`!!found normal X-Wing for possible ${p} by ${dir}, cells: ${Cell.outputCellList(xwingCells)}`);
                         } else {
                             cleanCandidates.set(cleanIndexStr, set);
                             let tilepos0 = Cell.calcTilePosition(dir, pair[0].tileNum);
@@ -1477,7 +1509,7 @@ class Board {
                                 }
                             }
                             if (isFinnedMatch) {
-                                console.log(`found finned X-Wing: ${dir}, possible ${finItem.p}, finCells: ${Cell.outputCellList(finItem.fin)}, single: ${finItem.cell.xy()}, other pair: ${Cell.outputCellList(clean.set)}`)
+                                this.log(`found finned X-Wing: ${dir}, possible ${finItem.p}, finCells: ${Cell.outputCellList(finItem.fin)}, single: ${finItem.cell.xy()}, other pair: ${Cell.outputCellList(clean.set)}`)
                                 // the possibles we can clear are the ones that are in the fin corner column and buddies with the fin
                                 // since the fin must be in the same tile as the corner, this means that we're to clear possibles from
                                 // the fine tile that have the same column or row as the corner
@@ -1567,8 +1599,8 @@ class Board {
         // debugging output
         ["row", "column"].forEach(tag => {
             let arr = candidates[tag];
-            console.log(`Output ${tag}:`);
-            console.log(arr);
+            this.log(`Output ${tag}:`);
+            this.log(arr);
         });  
 */
         
@@ -1595,7 +1627,7 @@ class Board {
                         let candidateCells = arr[0].cells.union(arr[1].cells, arr[2].cells);
                         if (candidateCells.size === 3) {
                             let rows = arr.map(item => item.rowNum);
-                            console.log(`found swordfish for value ${cellValue}, ${tag === "row" ? "columns" : "rows"} ${candidateCells.toBracketString()} and ${tag}s [${rows.join(",")}]`);
+                            this.log(`found swordfish for value ${cellValue}, ${tag === "row" ? "columns" : "rows"} ${candidateCells.toBracketString()} and ${tag}s [${rows.join(",")}]`);
                             
                             // get opposite direction for clearing
                             let direction = (tag === "row" ? "column" : "row");
@@ -1658,16 +1690,16 @@ class Board {
                             let matches = arr.concat(cell);
                             if (matches[0].row === matches[1].row && matches[0].row === matches[2].row) {
                                 // all in same row
-                                console.log(`found triplet in same row: ${matches[0].xy()}, ${matches[1].xy()}, ${matches[2].xy()}`)
+                                this.log(`found triplet in same row: ${matches[0].xy()}, ${matches[1].xy()}, ${matches[2].xy()}`)
                             } else if (matches[0].col === matches[1].col && matches[0].col === matches[2].col) {
                                 // all in same col
-                                console.log(`found triplet in same col: ${matches[0].xy()}, ${matches[1].xy()}, ${matches[2].xy()}`)
+                                this.log(`found triplet in same col: ${matches[0].xy()}, ${matches[1].xy()}, ${matches[2].xy()}`)
                             } else if (matches[0].tileNum === matches[1].tileNum && matches[0].tileNum === matches[2].tileNum) {
                                 // all in same tileNum
-                                console.log(`found triplet in same tile: ${matches[0].xy()}, ${matches[1].xy()}, ${matches[2].xy()}`)
+                                this.log(`found triplet in same tile: ${matches[0].xy()}, ${matches[1].xy()}, ${matches[2].xy()}`)
                             } 
                             // must actually be XYWing pattern
-                            console.log(`found XYWing with pivot ${cell.xy()} ${cell.pList()} and cells ${arr[0].xy()} ${arr[0].pList()}, ${arr[1].xy()} ${arr[1].pList()}`);
+                            this.log(`found XYWing with pivot ${cell.xy()} ${cell.pList()} and cells ${arr[0].xy()} ${arr[0].pList()}, ${arr[1].xy()} ${arr[1].pList()}`);
 
                             // For the leaf pair (not including the pivot cell)
                             //     Find common buddies
@@ -1690,6 +1722,160 @@ class Board {
         
     }
     
+    processXCyles() {
+        let possiblesCleared = 0;
+        // find isolated pairs, try each value and see what common possibles are eliminated in both cases
+        this.log("Trying XCyles");
+        let candidateCells = new Map();
+        let pairCells = new SpecialSet();
+        this.iterateOpenCellsByStructureAll(cells => {
+            for (let cell of cells) {
+                // if only two values, then try each one
+                if (cell.possibles.size === 2) {
+                    pairCells.add(cell);
+                }
+            }
+            
+            // find out which possible values only exist in two cells in this unit
+            let pMap = this.getPossibleMap(cells);
+            for (let [p, set] of pMap) {
+                if (set.size === 2) {
+                    // create a unique string key
+                    // 29:3    where 29 is the index of the cell and 3 is the possible value to try
+                    // so we don't repeat any items in the candidateCells map
+                    for (let cell of set) {
+                        if (!pairCells.has(cell)) {
+                            let key = `${cell.index}:${p}`;
+                            candidateCells.set(key, {cell, p});
+                        }
+                    }
+                }
+            }
+        });
+        for (let [key, cellData] of candidateCells) {
+            this.log(` XCycle: possible ${cellData.p} in ${cellData.cell.xy()} is a candidate for XCycle analysis`);
+        }
+        
+        // iterate all pairCells
+        for (let cell of pairCells) {
+            // check the value here for safety in case it was modified during this iteration
+            if (!cell.value && cell.possibles.size === 2) {
+                let row = cell.row;
+                let col = cell.col;
+                
+                let bAlt1 = this.clone();
+                bAlt1.loggingEnabled = false;
+                let bAlt2 = this.clone();
+                bAlt2.loggingEnabled = false;
+                
+                let pArray = cell.possibles.toArray();
+                let p1 = pArray[0];
+                let p2 = pArray[1];
+                let p1OK = true;
+                let p2OK = true;
+                // now set this cell to the p1 value in the bAlt1 board
+                try {
+                    this.log(` Trying value ${p1} in ${cell.xy()} ${cell.possibles.toBracketString()}`)
+                    bAlt1.setValue(bAlt1.getCell(row, col), p1, 1);
+                    bAlt1.checkBoard();
+                } catch(e) {
+                    p1OK = false;
+                }
+                
+                if (p1OK) {
+                    try {
+                        this.log(` Trying value ${p2} in ${cell.xy()} ${cell.possibles.toBracketString()}`)
+                        bAlt2.setValue(bAlt2.getCell(row, col), p2, 1);
+                        bAlt2.checkBoard();
+                    } catch(e) {
+                        p2OK = false;
+                    }
+                    if (p2OK) {
+                        // both p1 and p2 passed checkBoard()
+                        this.log(" Both p1 and p2 passed checkBoard");
+                        // need to see what possibles were cleared in both scenarios
+                        this.iterateOpenCells((cell, row, col) => {
+                            let posOrig = cell.possibles;
+                            let bAltCell1 = bAlt1.getCell(row, col);
+                            let bAltCell2 = bAlt2.getCell(row, col);
+                            let pos1 = bAltCell1.possibles.clone();
+                            let pos2 = bAltCell2.possibles.clone();
+                            if (bAltCell1.value) {
+                                pos1.add(bAltCell1.value);
+                            }
+                            if (bAltCell2.value) {
+                                pos2.add(bAltCell2.value);
+                            }
+                            // calc the possibles that were removed from each alternate
+                            let diff1 = posOrig.difference(pos1);
+                            let diff2 = posOrig.difference(pos2);
+                            // get the possibles that were removed from both alternates
+                            let both = diff1.intersection(diff2);
+                            if (both.size !== 0) {
+                                this.log(`  On cell ${cell.xy()}, both scenarios removed possibles ${both.toBracketString()}`);
+                            } else {
+                                
+                            }
+                        });
+                    } else {
+                        // only p1 passed checkBoard()
+                        this.log(" Only p1 passed checkBoard");
+                        // apply setValue(p1) to main board
+                        this.log(` XCycle setValue: ${cell.xy()}, value ${p1}`);
+                        possiblesCleared += this.setValue(cell, p1, 1);
+                    }
+                } else {
+                    this.log(" p1 did not pass checkBoard");                        
+                    // assume p2 would have passed
+                    this.log(` XCycle setValue: ${cell.xy()}, value ${p2}`);
+                    possiblesCleared += this.setValue(cell, p2, 1);
+                }
+            }
+        }
+        
+        // now try single possibles in the candidate cells
+        for (let cellData of candidateCells.values()) {
+            let {cell, p} = cellData;
+            if (!cell.value && cell.possibles.has(p)) {
+                // try one possible as the value in each candidateCell
+                // three possible outcomes here
+                // 1) checkBoard() fails in which case we can remove this possible
+                // 2) checkBoard() returns 0 meaning it solved the puzzle
+                // 3) checkBoard() does not fail and does not return 0 which means we don't know anything more about this value
+                let tryOK = true;
+                try {
+                    this.log(` Trying value ${p} in ${cell.xy()} ${cell.possibles.toBracketString()}`);
+                    let bAlt = this.clone();
+                    bAlt.loggingEnabled = false;
+                    bAlt.setValue(bAlt.getCell(cell.row, cell.col), p);
+                    // if this solved the puzzle, then set this value and be done
+                    if (bAlt.checkBoard() === 0) {
+                        possiblesCleared += this.setValue(cell, p, 1);
+                        break;
+                    } else {
+                        this.log(`  Board OK after trying value, but not solved, nothing to conclude`);
+                    }
+                } catch(e) {
+                    // expected possible board error
+                    if (e instanceof BoardError) {
+                        tryOK = false;
+                    } else {
+                        // programming error, don't eat this error
+                        throw e;
+                    }
+                }
+                if (!tryOK) {
+                    // this value caused an invalid board, therefore it can't be an 
+                    // acceptable possible value and can be removed
+                    this.log(`  Board failed after trying value, clearing possible ${p} in ${cell.xy()} ${cell.possibles.toBracketString()}`);
+                    this.clearListOfPossibles([cell], [p], 1);
+                }
+            }
+        }
+        
+        return possiblesCleared;
+    }
+    
     // type is "row", "column" or "tile"
     // num is the row number, column number or tile number
     // val is the possible value to clear
@@ -1703,9 +1889,9 @@ class Board {
             // if neither cell or index is in the exceptions list, then we can clear the possible
             if (!exceptions || (!exceptions.has(cell) && !exceptions.has(index))) {
                 if (cell.possibles.delete(val)) {
-                    console.log(`clearPossibles: cell:${cell.xy()}, val:${val}`);
+                    this.log(`clearPossibles: cell:${cell.xy()}, val:${val}`);
                     if (cell.possibles.size === 0) {
-                        console.log('error: clearPossibles left no possibles'); 
+                        this.log('error: clearPossibles left no possibles'); 
                     }
                     ++cnt;
                 }
@@ -1719,7 +1905,7 @@ class Board {
     countOpen() {
         let cnt = 0;
         this.iterateOpenCells((cell, row, col) => {
-            //console.log("Open (" + row + ", " + col + ")", cell.possibles);
+            //this.log("Open (" + row + ", " + col + ")", cell.possibles);
             ++cnt;
         });
         return cnt;
@@ -1772,7 +1958,7 @@ class Board {
             // calc where data for a given cell index starts
             let baseRow = Math.floor(index / boardSize) * (tileSize + 1);
             let baseCol = (index % boardSize) * (tileSize + 1);
-            //console.log(index, baseRow, baseCol);
+            //this.log(index, baseRow, baseCol);
             cellData.forEach((p, i) => {
                 let row = Math.floor(i / tileSize);
                 let col = Math.floor(i % tileSize);
@@ -1821,7 +2007,7 @@ class Board {
         
         // output the 2D array to console
         outputGrid.forEach(row => {
-            console.log(row.join(""));
+            this.log(row.join(""));
         });
     }
 
@@ -1834,6 +2020,7 @@ class Board {
 
 
 function runBoard(boardStr, name) {
+    name = name || "";
     if (name) {
         console.log(`Running board ${name}`);
     }
@@ -1855,7 +2042,8 @@ function runBoard(boardStr, name) {
         "processXwing",
         "processSwordfish",
         "processXYWing",
-        "processXWingFinned"
+        "processXWingFinned",
+        "processXCyles"
     ];
 
     let openCells;
@@ -1886,11 +2074,11 @@ function runBoard(boardStr, name) {
         openCells = b.checkBoard();
     } catch(e) {
         b.outputPossibles();
-        console.log("Final Board:", b.outputBoard());
+        console.log(`Final Board: ${name} ${b.outputBoard()}` );
         throw e;
     }
     b.outputPossibles();
-    console.log("Final Board:", b.outputBoard());
+    console.log(`Final Board: ${name} ${b.outputBoard()}` );
     if (openCells) {
         console.log(`Still ${b.countOpen()} open cells`);
     }
@@ -1898,19 +2086,20 @@ function runBoard(boardStr, name) {
 }
 
 let arg = process.argv[2];
-let boardStr;
+let boardStr, name = "";
 if (arg) {
     // argument can either be a sudoku board string or the name of a board already in our patterns file
-    if (arg.match(/^\d]/)) {
+    if (arg.match(/^\d/)) {
         boardStr = arg;
     } else {
-        boardStr = patterns[arg];
+        name = arg;
+        boardStr = patterns[name];
     }
 }
 
 let openResults = [];
 if (boardStr) {
-    runBoard(boardStr);
+    runBoard(boardStr, name);
 } else {
     let boardNames = Object.keys(patterns);
     for (name of boardNames) {
@@ -1930,7 +2119,7 @@ for (let item of openResults) {
     } else if (item.numOpenCells !== expectedOpenCells) {
         unexpected.push(`Puzzle ${item.name} was unsolved, had ${item.numOpenCells} open cells, expected ${expectedOpenCells} open cells.`);
     } else {
-        console.log(`Puzzle ${item.name} was unsolved as expected`);
+        console.log(`Puzzle ${item.name} was unsolved as expected with ${item.numOpenCells} open cells`);
     }
 }
 

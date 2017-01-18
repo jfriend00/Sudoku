@@ -11,6 +11,7 @@ class SpecialSet extends Set {
         for (let item of iterable) {
             this.add(item);
         }
+        return this;
     }
     
     // remove items in this set that are in the otherIterable

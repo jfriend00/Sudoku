@@ -1854,13 +1854,14 @@ class Board {
                     } else {
                         // try solving this board
                         this.log(`  Solve attempt`);
+                        // avoid recursion here by skipping processXCycles in the call to .solve()
                         let numOpenCells = bAlt.solve({skipMethods: ["processXCyles"], skipCalcPossibles: true});
                         if (numOpenCells === 0) {
-                            this.log(`  Board solved with this xcycle guess`);
-                            // FIXME: write code here to setValue into the main board
+                            this.log(` Board solved with this xcycle guess`);
+                            possiblesCleared += this.setValue(cell, p, 1);
                             break;
                         } else {
-                            this.log(`  Board OK after trying value, but not solved, nothing to conclude`);
+                            this.log(`  Board OK after trying value, but not solved (${numOpenCells} open cells), nothing to conclude`);
                         }
                     }
                 } catch(e) {
@@ -1880,10 +1881,6 @@ class Board {
                 }
             }
         }
-        
-        // FIXME: things to try - Run the solver with all algorithms on bAlt in the above block of code and see what happens.
-        // Doing that will recursively try different guesses until the board fails.
-        
         return possiblesCleared;
     }
     

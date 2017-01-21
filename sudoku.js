@@ -4,87 +4,90 @@ const patterns = sudokuPatternInfo.patterns;
 const unsolved = sudokuPatternInfo.unsolved;
 const SpecialSet = require('./specialset.js');    
 
-        // http://www.stolaf.edu/people/hansonr/sudoku/12rules.htm
-        // technique names
-        //    naked tuples (doubles, triples, quads)
-        //    x-wing
-        //    swordfish
-        //    n-grid
-        //    n-locked candidates
-        // 
-        
-        // hidden tuples
-        //   If n candidates are possible in a set of n columns of a given row and those n candidates 
-        //   are not possible elsewhere in that row, then no other candidates are possible in those n cells.
-        //   Same applies to columns and tiles
-        //
-        // grid analysis (x-wing, swordfish)
-        //   If a candidate k is possible in the intersection of n rows and n columns
-        //   but is not possible elsewhere in those n rows, then it is also not possible
-        //   elsewhere in those n columns
-        
-        // https://www.kristanix.com/sudokuepic/sudoku-solving-techniques.php
-        //   Sole candidate 
-        //        No other possibles for a cell as all other values are already intersected in row/col/tile
-        //   Unique candidate 
-        //        Since each tile must contain all numbers, sometimes there's only one spot in the tile where a given number can go)
-        //   Block and column / Row Interaction
-        //        If the only places a given value can be in a cell are in the same row or column, then you can eliminate
-        //        those values from the neighboring tiles in that row or column
-        //   Block / Block Interaction
-        //        Not sure how to describe this one (see above web link)
-        //   Naked Pair
-        //        When you have two cells in any row/col/tile that have the same two possibles, then those two cells
-        //        must contain those values and they cannot exist anywhere else in that row/col/tile
-        //   X-Wing
-        //        Rectangle of four cells that can contain a particular value and no other cell in those 
-        //        one of two rows or two colums or two tiles can contain that value.  Then, you know that two
-        //        of the four cells must be that value and they must be diagonal from each other.  You can eliminate
-        //        those values as possibles from any other cells in the row/column (the other direction from what you already
-        //        had eliminated)
-        //   Swordfish
-        //        More complicated version of x-wing
-        //        I do not understand this one yet
-        //   Forcing Chain
-        //        I do not understand this one yet (mini guess and test that leads to the same value
-        //        for some cell regardless of what you guess for some other cell
-        //
-        // ****** This is the best site with great explanations, examples and test puzzles ******
-        // http://www.sadmansoftware.com/sudoku/solvingtechniques.php (and test puzzles for every test here)
-        // SDK files are saved Sudoku puzzles in SadMan Sudoku format
-        //   Naked Single (sole candidate)
-        //   Hidden single (unique candidate)
-        //   Block and column/row interactions
-        //        When examining a tile, you determine that a given number must be in a certain row or column 
-        //        within that tile.  That means you can eliminate that number from that row or column in any of 
-        //        the neighboring tiles.
-        //   Naked Pair, Triplet, Quad
-        //        Same as above
-        //        Can be applied to triplets or quads, but in those cases each piece of the triplet or quad is the
-        //        only place a given set of values can be and all values don't have to be possible in all parts of
-        //        the triplet or quad
-        //   Hidden Pair, Triplet, Quad
-        //        Pair: Only two cells in same row/col/tile have the same two possibles (even though they have lots
-        //        of other possibles).  Then those two cells must contain those two values and you can eliminate
-        //        all the other possibles for those two cells.  If the two cells are in a row or column and the two 
-        //        cells are in the same tile, then you can eliminate those two values from elsewhere in the tile
-        //   XY-Wing
-        //        I don't know how to recognize this one in code
-        //   Colouring
-        //        I don't know how to recognize this one in code
-        //   Remote Pairs
-        //        Chains of pairs where no matter which way you guess on anyone in the chain, you get
-        //        an intersecting cell that can't be either value of the pair
-        //        Don't know how to code this one
-        //   XY-Chain
-        //        Chain of connected cells each with only pairs allows you to eliminate various values
-        //        because no matter which way you start the chain, you find intersecting cells that can't
-        //        have certain values in the chain
-        //        I don't know how to recognize this one in code
-        //   Forcing Chains
-        //        Following connected pairs yields same result for some cell no matter which value you start
-        //        with in the chain.  This is kind of a guess and test, but the guesses are swiftly determinate.
-        //        I don't know how to recognize this one in code
+
+// Another source of hard puzzles and knowledge: http://sudoku.ironmonger.com/home/home.tpl?board=094002160126300500000169040481006005062010480900400010240690050019005030058700920
+
+// http://www.stolaf.edu/people/hansonr/sudoku/12rules.htm
+// technique names
+//    naked tuples (doubles, triples, quads)
+//    x-wing
+//    swordfish
+//    n-grid
+//    n-locked candidates
+// 
+
+// hidden tuples
+//   If n candidates are possible in a set of n columns of a given row and those n candidates 
+//   are not possible elsewhere in that row, then no other candidates are possible in those n cells.
+//   Same applies to columns and tiles
+//
+// grid analysis (x-wing, swordfish)
+//   If a candidate k is possible in the intersection of n rows and n columns
+//   but is not possible elsewhere in those n rows, then it is also not possible
+//   elsewhere in those n columns
+
+// https://www.kristanix.com/sudokuepic/sudoku-solving-techniques.php
+//   Sole candidate 
+//        No other possibles for a cell as all other values are already intersected in row/col/tile
+//   Unique candidate 
+//        Since each tile must contain all numbers, sometimes there's only one spot in the tile where a given number can go)
+//   Block and column / Row Interaction
+//        If the only places a given value can be in a cell are in the same row or column, then you can eliminate
+//        those values from the neighboring tiles in that row or column
+//   Block / Block Interaction
+//        Not sure how to describe this one (see above web link)
+//   Naked Pair
+//        When you have two cells in any row/col/tile that have the same two possibles, then those two cells
+//        must contain those values and they cannot exist anywhere else in that row/col/tile
+//   X-Wing
+//        Rectangle of four cells that can contain a particular value and no other cell in those 
+//        one of two rows or two colums or two tiles can contain that value.  Then, you know that two
+//        of the four cells must be that value and they must be diagonal from each other.  You can eliminate
+//        those values as possibles from any other cells in the row/column (the other direction from what you already
+//        had eliminated)
+//   Swordfish
+//        More complicated version of x-wing
+//        I do not understand this one yet
+//   Forcing Chain
+//        I do not understand this one yet (mini guess and test that leads to the same value
+//        for some cell regardless of what you guess for some other cell
+//
+// ****** This is the best site with great explanations, examples and test puzzles ******
+// http://www.sadmansoftware.com/sudoku/solvingtechniques.php (and test puzzles for every test here)
+// SDK files are saved Sudoku puzzles in SadMan Sudoku format
+//   Naked Single (sole candidate)
+//   Hidden single (unique candidate)
+//   Block and column/row interactions
+//        When examining a tile, you determine that a given number must be in a certain row or column 
+//        within that tile.  That means you can eliminate that number from that row or column in any of 
+//        the neighboring tiles.
+//   Naked Pair, Triplet, Quad
+//        Same as above
+//        Can be applied to triplets or quads, but in those cases each piece of the triplet or quad is the
+//        only place a given set of values can be and all values don't have to be possible in all parts of
+//        the triplet or quad
+//   Hidden Pair, Triplet, Quad
+//        Pair: Only two cells in same row/col/tile have the same two possibles (even though they have lots
+//        of other possibles).  Then those two cells must contain those two values and you can eliminate
+//        all the other possibles for those two cells.  If the two cells are in a row or column and the two 
+//        cells are in the same tile, then you can eliminate those two values from elsewhere in the tile
+//   XY-Wing
+//        I don't know how to recognize this one in code
+//   Colouring
+//        I don't know how to recognize this one in code
+//   Remote Pairs
+//        Chains of pairs where no matter which way you guess on anyone in the chain, you get
+//        an intersecting cell that can't be either value of the pair
+//        Don't know how to code this one
+//   XY-Chain
+//        Chain of connected cells each with only pairs allows you to eliminate various values
+//        because no matter which way you start the chain, you find intersecting cells that can't
+//        have certain values in the chain
+//        I don't know how to recognize this one in code
+//   Forcing Chains
+//        Following connected pairs yields same result for some cell no matter which value you start
+//        with in the chain.  This is kind of a guess and test, but the guesses are swiftly determinate.
+//        I don't know how to recognize this one in code
         
         
 // Things to code for sure:
@@ -1813,8 +1816,10 @@ class Board {
                 let p1OK = true;
                 let p2OK = true;
                 // now set this cell to the p1 value in the bAlt1 board
+                let output = "";
                 try {
-                    this.log(` Trying value ${p1} in ${cell.xy()} ${cell.possibles.toBracketString()}`)
+                    output = ` Trying value ${p1} in ${cell.xy()} ${cell.possibles.toBracketString()}`;
+                    this.log(output)
                     bAlt1.setValue(bAlt1.getCell(row, col), p1, 1);
                     bAlt1.checkBoard();
                 } catch(e) {
@@ -1852,8 +1857,9 @@ class Board {
                             let both = diff1.intersection(diff2);
                             if (both.size !== 0) {
                                 this.log(`  On cell ${cell.xy()}, both scenarios removed possibles ${both.toBracketString()}`);
+                                this.log(`  FIXME: If this situation actually happens on a real board, we need to write code to clear these possibles`);
                             } else {
-                                
+                                // no possibles removed in both scenarios
                             }
                         });
                     } else {
@@ -1862,12 +1868,14 @@ class Board {
                         // apply setValue(p1) to main board
                         this.log(` XCycle setValue: ${cell.xy()}, value ${p1}`);
                         possiblesCleared += this.setValue(cell, p1, 1);
+                        this.saveSolution(`Tried values {${p1} and ${p2}} in ${cell.xy()} and only ${p1} led to a valid board so set that value`);
                     }
                 } else {
                     this.log(" p1 did not pass checkBoard");                        
                     // assume p2 would have passed
                     this.log(` XCycle setValue: ${cell.xy()}, value ${p2}`);
                     possiblesCleared += this.setValue(cell, p2, 1);
+                    this.saveSolution(`Tried value ${p1} in ${cell.xy()} and it failed so set only other value ${p2} as the value`);
                 }
             }
         }
@@ -1883,13 +1891,15 @@ class Board {
                 // 3) checkBoard() does not fail and does not return 0 which means we don't know anything more about this value
                 let tryOK = true;
                 try {
-                    this.log(` Trying value ${p} in ${cell.xy()} ${cell.possibles.toBracketString()}`);
+                    let output = ` Trying value ${p} in ${cell.xy()} ${cell.possibles.toBracketString()}`;
+                    this.log(output);
                     let bAlt = this.clone();
                     bAlt.loggingEnabled = false;
                     bAlt.setValue(bAlt.getCell(cell.row, cell.col), p);
                     // if this solved the puzzle, then set this value and be done
                     if (bAlt.checkBoard() === 0) {
                         possiblesCleared += this.setValue(cell, p, 1);
+                        this.saveSolution(output + " - solved puzzle immediately");
                         break;
                     } else {
                         // try solving this board
@@ -1899,6 +1909,7 @@ class Board {
                         if (numOpenCells === 0) {
                             this.log(` Board solved with this xcycle guess`);
                             possiblesCleared += this.setValue(cell, p, 1);
+                            this.saveSolution(output + " - solved puzzle after further solve alogorithms");
                             break;
                         } else {
                             this.log(`  Board OK after trying value, but not solved (${numOpenCells} open cells), nothing to conclude`);
@@ -1916,8 +1927,10 @@ class Board {
                 if (!tryOK) {
                     // this value caused an invalid board, therefore it can't be an 
                     // acceptable possible value and can be removed
-                    this.log(`  Board failed after trying value, clearing possible ${p} in ${cell.xy()} ${cell.possibles.toBracketString()}`);
-                    this.clearListOfPossibles([cell], [p], 1);
+                    let output = `  Board failed after trying value, clearing possible ${p} in ${cell.xy()} ${cell.possibles.toBracketString()}`;
+                    this.log(output);
+                    possiblesCleared += this.clearListOfPossibles([cell], [p], 1);
+                    this.saveSolution(output);
                 }
             }
         }
@@ -2127,7 +2140,7 @@ class Board {
             throw e;
         }
         this.outputPossibles();
-        this.log(`Final Board: ${name} ${this.outputBoard()}` );
+        this.log(`Final Board: ${options.name} ${this.outputBoard()}` );
         if (openCells) {
             this.log(`Still ${this.countOpen()} open cells`);
         }
@@ -2141,59 +2154,95 @@ class Board {
 // and then remove any possibles that are removed from both tries.  Identify a strong link (a possible value that only has 
 // one other possible value in the same row/col/tile
 
-
-function runBoard(boardStr, name, single) {
-    name = name || "";
-    if (name) {
-        console.log(`Running board ${name}`);
+// options here are passed straight through to b.solve()
+// options.showSolutionsSummary means to show the summary of solutions
+function runBoard(boardStr, name, options = {}) {
+    options.name = options.name || "";
+    if (options.name) {
+        console.log(`Running board ${options.name}`);
     }
     let b = new Board(boardStr);
-    let opens =  b.solve();
+    let opens = b.solve(options);
     
-    if (single) {
+    if (options.showSolutionsSummary) {
         console.log("\nSolutions:\n", b.solutions.join("\n "));
     }
     
     return opens;
 }
 
-let arg = process.argv[2];
-let boardStr, name = "";
-if (arg) {
-    // argument can either be a sudoku board string or the name of a board already in our patterns file
-    if (arg.match(/^\d/)) {
-        boardStr = arg;
-    } else {
-        name = arg;
-        boardStr = patterns[name];
-    }
-}
-
-let openResults = [];
-if (boardStr) {
-    runBoard(boardStr, name, true);
-} else {
-    let boardNames = Object.keys(patterns);
-    for (name of boardNames) {
-        console.log("-----------------------------------------------------------------------------------------------------------------");
-            let numOpenCells = runBoard(patterns[name], name);
-            if (numOpenCells) {
-                openResults.push({name, numOpenCells});
+// node sudoku.js [-noguess] boardName
+// node sudoku.js [-noguess] boardString
+function processArgs() {
+    let options = {};
+    let args = process.argv.slice(2);
+    for (let arg of args) {
+        if (arg.charAt(0) === "-") {
+            switch(arg) {
+                case "-noguess":
+                    options.noGuess = true;
+                    break;
+                default:
+                    console.log(`Unexpected argument ${arg}`);
+                    process.exit(1);
+                    break;
             }
+        } else {
+            // if arg contains only digits, then must be a sudoku pattern
+            if (!/\D/.test(arg)) {
+                options.puzzle = arg;
+            } else {
+                // must be a boardname
+                options.name = arg;
+                options.puzzle = patterns[arg];
+                if (!options.puzzle) {
+                    console.log(`Puzzle name ${arg} not found in pre-built puzzle list`);
+                    process.exit(1);
+                }
+            }
+        }
     }
-}
-console.log("-----------------------------------------------------------");
-let unexpected = [];
-for (let item of openResults) {
-    let expectedOpenCells = unsolved[item.name];
-    if (typeof expectedOpenCells === "undefined") {
-        unexpected.push(`Puzzle ${item.name} was unsolved, expecting it to be solved.`);
-    } else if (item.numOpenCells !== expectedOpenCells) {
-        unexpected.push(`Puzzle ${item.name} was unsolved, had ${item.numOpenCells} open cells, expected ${expectedOpenCells} open cells.`);
-    } else {
-        console.log(`Puzzle ${item.name} was unsolved as expected with ${item.numOpenCells} open cells`);
-    }
+    return options;
 }
 
-console.log("-----------------------------------------------------------");
-console.log(unexpected.join("/d"));
+function run() {
+    // process the command line arguments
+    let options = processArgs();
+    if (options.noGuess) {
+        options.skipMethods = ["processXCyles"];
+    }
+
+    let openResults = [];
+    // if puzzle is already known here, then just run that puzzle
+    if (options.puzzle) {
+        options.showSolutionsSummary = true;
+        runBoard(options.puzzle, options.name, options);
+    } else {
+        // no puzzle specified, run all the puzzles
+        let boardNames = Object.keys(patterns);
+        for (name of boardNames) {
+            console.log("-----------------------------------------------------------------------------------------------------------------");
+                let numOpenCells = runBoard(patterns[name], name, options);
+                if (numOpenCells) {
+                    openResults.push({name, numOpenCells});
+                }
+        }
+    }
+    console.log("-----------------------------------------------------------");
+    let unexpected = [];
+    for (let item of openResults) {
+        let expectedOpenCells = unsolved[item.name];
+        if (typeof expectedOpenCells === "undefined") {
+            unexpected.push(`Puzzle ${item.name} was unsolved, expecting it to be solved.`);
+        } else if (item.numOpenCells !== expectedOpenCells) {
+            unexpected.push(`Puzzle ${item.name} was unsolved, had ${item.numOpenCells} open cells, expected ${expectedOpenCells} open cells.`);
+        } else {
+            console.log(`Puzzle ${item.name} was unsolved as expected with ${item.numOpenCells} open cells`);
+        }
+    }
+
+    console.log("-----------------------------------------------------------");
+    console.log(unexpected.join("\n"));
+}
+
+run();

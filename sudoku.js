@@ -318,6 +318,11 @@ class Board {
             console.log.apply(console, arguments);
         }
     }
+    
+    saveSolution(str) {
+        this.solutions.push(str.trim());
+    }
+    
 
     // returns the number of open cells (0 means the board is solved);
     // options is an optional argument
@@ -1026,12 +1031,16 @@ class Board {
                         union.addTo(cell.possibles);
                     }
                     if (union.size === len) {
-                        this.log(`found ${utils.makeQtyStr(len)} {${union.toNumberString()}} in cells ${cellsToStr(combo)}`);
+                        let output = `found ${utils.makeQtyStr(len)} {${union.toNumberString()}} in cells ${cellsToStr(combo)}`;
+                        this.log(output);
                         // clear all possibles in the union from the other cells on the set
                         let exclusionCells = new SpecialSet(cells);
                         exclusionCells.remove(combo);
                         let newPossiblesCleared = this.clearListOfPossibles(exclusionCells, union, 1);
                         possiblesCleared += newPossiblesCleared;
+                        if (newPossiblesCleared) {
+                            this.saveSolution(output);
+                        }
                         
                         // we have to stop processing this set of cells because they may no longer all be open
                         // and the combinations may no longer be valid
@@ -1075,12 +1084,16 @@ class Board {
                         if (union.size === 1) {
                             // all the matched cells must all be in the same row/col here
                             // can clear other possibles from this row/col
-                            this.log(`found pointing ${utils.makeQtyStr(set.size)} for possible ${p} consisting of ${cellsToStr(set)}`);
+                            let output = `found pointing ${utils.makeQtyStr(set.size)} for possible ${p} consisting of ${cellsToStr(set)}`;
+                            this.log(output);
                             // now clear things - get the open cells in this row or col
                             let clearCells = new SpecialSet(this.getOpenCellsX(dir, union.getFirst()));
                             // remove any from this tile
                             clearCells.remove(cells);
                             let newPossiblesCleared = this.clearListOfPossibles(clearCells, [p]);
+                            if (newPossiblesCleared) {
+                                this.saveSolution(output);
+                            }
                             possiblesCleared += newPossiblesCleared;
                             // After we clear some possibles here, it seems likely that the pMap is no longer accurate
                             // so we have to return and let it all start over
@@ -1209,7 +1222,9 @@ class Board {
             // See if we have N possibles contained only in N cells
             if (candidateUnion.size === candidateSet.size) {
                 if (isHidden) {
-                    this.log(`found hidden subset ${utils.makeQtyStr(candidateSet.size)} with values {${candidateUnion.toNumberString()}} in ${Cell.outputCellList(candidateSet)}`);
+                    let output = `found hidden subset ${utils.makeQtyStr(candidateSet.size)} with values {${candidateUnion.toNumberString()}} in ${Cell.outputCellList(candidateSet)}`;
+                    this.log(output);
+                    let origCnt = cnt;
                     // clear possibles in the candidateSet that are in the otherUnion
                     for (let cell of candidateSet) {
                         let removing = cell.possibles.intersection(otherUnion);
@@ -1217,6 +1232,9 @@ class Board {
                             this.log(` removing possibles {${removing.toNumberString()}} from ${cell.xy()}`)
                             cnt += cell.possibles.remove(removing);
                         }
+                    }
+                    if (cnt !== origCnt) {
+                        this.saveSolution(output);
                     }
                 } else {
                     this.log(`found already processed naked ${utils.makeQtyStr(candidateSet.size)} with values {${candidateUnion.toNumberString()}} in ${Cell.outputCellList(candidateSet)}`);
@@ -1304,9 +1322,10 @@ class Board {
                         if (type !== "row") {
 							[rows, columns] = [columns, rows];
                         }
-                        this.log(`Found x-wing pattern by ${type}: value=${digit} ` +
+                        let output = `found x-wing pattern by ${type}: value=${digit} ` +
                             `${this.getCell(rows[0], columns[0]).xy()}, ${this.getCell(rows[0], columns[1]).xy()}, ` + 
-                            `${this.getCell(rows[1], columns[0]).xy()}, ${this.getCell(rows[1], columns[1]).xy()}`);
+                            `${this.getCell(rows[1], columns[0]).xy()}, ${this.getCell(rows[1], columns[1]).xy()}`;
+                        this.log(output);
                             
                         let getFnName;
                         if (type === "row") {
@@ -1316,6 +1335,7 @@ class Board {
                         }
                         let position1 = candidates[type].get(key);
                         let position2 = typeNum;
+                        let origPossiblesCleared = possiblesCleared;
                         set.forEach(x => {
                             let cells = this[getFnName](x);
                             cells.forEach((cell, index) => {
@@ -1332,6 +1352,9 @@ class Board {
                                 }
                             });
                         });
+                        if (possiblesCleared !== origPossiblesCleared) {
+                            this.saveSolution(output);
+                        }
                         // 
                     } else {
                         candidates[type].set(key, typeNum);
@@ -1508,12 +1531,15 @@ class Board {
                                 }
                             }
                             if (isFinnedMatch) {
-                                this.log(`found finned X-Wing: ${dir}, possible ${finItem.p}, finCells: ${Cell.outputCellList(finItem.fin)}, single: ${finItem.cell.xy()}, other pair: ${Cell.outputCellList(clean.set)}`)
+                                let output = `found finned X-Wing: ${dir}, possible ${finItem.p}, finCells: ${Cell.outputCellList(finItem.fin)}, single: ${finItem.cell.xy()}, other pair: ${Cell.outputCellList(clean.set)}`;
+                                this.log(output)
                                 // the possibles we can clear are the ones that are in the fin corner column and buddies with the fin
                                 // since the fin must be in the same tile as the corner, this means that we're to clear possibles from
                                 // the fine tile that have the same column or row as the corner
                                 // clean.finMatchColumn is the column we want to be clearing from
                                 // we can get the tileNum from any cell in the fin
+                                
+                                let origPossiblesCleared = possiblesCleared;
                                 
                                 if (finItem.fin.size > 1) {
                                     // clear possible finItem.p that are in finItem.finTileNum and in clean.finMatchColumn
@@ -1540,6 +1566,10 @@ class Board {
                                     cellsToClear.delete(finCell);
                                     cellsToClear.delete(cleanCell);
                                     possiblesCleared += this.clearListOfPossibles(cellsToClear, [finItem.p], 1);
+                                }
+                                
+                                if (possiblesCleared !== origPossiblesCleared) {
+                                    this.saveSolution(output);
                                 }
                                 
                             }
@@ -1626,13 +1656,18 @@ class Board {
                         let candidateCells = arr[0].cells.union(arr[1].cells, arr[2].cells);
                         if (candidateCells.size === 3) {
                             let rows = arr.map(item => item.rowNum);
-                            this.log(`found swordfish for value ${cellValue}, ${tag === "row" ? "columns" : "rows"} ${candidateCells.toBracketString()} and ${tag}s [${rows.join(",")}]`);
+                            let output = `found swordfish for value ${cellValue}, ${tag === "row" ? "columns" : "rows"} ${candidateCells.toBracketString()} and ${tag}s [${rows.join(",")}]`;
+                            this.log(output);
                             
                             // get opposite direction for clearing
                             let direction = (tag === "row" ? "column" : "row");
+                            let origPossiblesCleared = possiblesCleared;
                             candidateCells.forEach(num => {
                                 possiblesCleared += this.clearPossibles(direction, num, cellValue, new Set(rows));                                
                             });
+                            if (possiblesCleared !== origPossiblesCleared) {
+                                this.saveSolution(output);
+                            }
                         }
                     })
                 }
@@ -1698,7 +1733,8 @@ class Board {
                                 this.log(`found triplet in same tile: ${matches[0].xy()}, ${matches[1].xy()}, ${matches[2].xy()}`)
                             } 
                             // must actually be XYWing pattern
-                            this.log(`found XYWing with pivot ${cell.xy()} ${cell.pList()} and cells ${arr[0].xy()} ${arr[0].pList()}, ${arr[1].xy()} ${arr[1].pList()}`);
+                            let output = `found XYWing with pivot ${cell.xy()} ${cell.pList()} and cells ${arr[0].xy()} ${arr[0].pList()}, ${arr[1].xy()} ${arr[1].pList()}`;
+                            this.log(output);
 
                             // For the leaf pair (not including the pivot cell)
                             //     Find common buddies
@@ -1710,7 +1746,11 @@ class Board {
                             let buds2 = this.getOpenCellsBuddies(c2, true);
                             // get intersection of two buddies and remove the third cell (probably not required, but seems safe)
                             let cellsToClear = buds1.intersection(buds2);
-                            possiblesCleared += this.clearListOfPossibles(cellsToClear, leafIntersect)
+                            let pCleared = this.clearListOfPossibles(cellsToClear, leafIntersect);
+                            possiblesCleared += pCleared;
+                            if (pCleared) {
+                                this.saveSolution(output);
+                            }
                             this.checkBoard();
                         }
                     }
@@ -2102,13 +2142,19 @@ class Board {
 // one other possible value in the same row/col/tile
 
 
-function runBoard(boardStr, name) {
+function runBoard(boardStr, name, single) {
     name = name || "";
     if (name) {
         console.log(`Running board ${name}`);
     }
     let b = new Board(boardStr);
-    return b.solve();
+    let opens =  b.solve();
+    
+    if (single) {
+        console.log("\nSolutions:\n", b.solutions.join("\n "));
+    }
+    
+    return opens;
 }
 
 let arg = process.argv[2];
@@ -2125,7 +2171,7 @@ if (arg) {
 
 let openResults = [];
 if (boardStr) {
-    runBoard(boardStr, name);
+    runBoard(boardStr, name, true);
 } else {
     let boardNames = Object.keys(patterns);
     for (name of boardNames) {

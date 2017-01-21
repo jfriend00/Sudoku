@@ -286,6 +286,7 @@ class Board {
     constructor(board) {
         this.data = [];
         this.loggingEnabled = true;
+		this.solutions = [];
         if (board) {
             // auto-convert string-formatted sdk Sudoku board format strings into arrays
             if (typeof board === "string") {
@@ -1301,9 +1302,7 @@ class Board {
                         let columns = Array.from(set);
                         // if type not row, then swap row/col values
                         if (type !== "row") {
-                            let temp = rows;
-                            rows = columns;
-                            columns = temp;
+							[rows, columns] = [columns, rows];
                         }
                         this.log(`Found x-wing pattern by ${type}: value=${digit} ` +
                             `${this.getCell(rows[0], columns[0]).xy()}, ${this.getCell(rows[0], columns[1]).xy()}, ` + 

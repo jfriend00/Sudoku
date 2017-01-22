@@ -1794,8 +1794,13 @@ class Board {
                 }
             }
         });
+        // give us some logging for debug reasons
         for (let [key, cellData] of candidateCells) {
             this.log(` XCycle: possible ${cellData.p} in ${cellData.cell.xy()} is a candidate for XCycle analysis`);
+        }
+        for (let cell of pairCells) {
+            let pair = cell.possibles.toArray();
+            this.log(` XCycle pair cell: possible ${pair[0]} and  ${pair[1]} in ${cell.xy()} are candidates for XCycle analysis`);
         }
         
         // iterate all pairCells

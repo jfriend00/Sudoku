@@ -32,7 +32,7 @@ const SpecialSet = require('./specialset.js');
 //        No other possibles for a cell as all other values are already intersected in row/col/tile
 //   Unique candidate 
 //        Since each tile must contain all numbers, sometimes there's only one spot in the tile where a given number can go)
-//   Block and column / Row Interaction
+//   Block and column / Row Interaction (pointing pairs/trips)
 //        If the only places a given value can be in a cell are in the same row or column, then you can eliminate
 //        those values from the neighboring tiles in that row or column
 //   Block / Block Interaction
@@ -1061,6 +1061,43 @@ class Board {
         return possiblesCleared;
     }
     
+    // look through all rows and columns
+    // If we find any row/col that has 2 or 3 open cells for a given possible and those open cells are
+    // all in the same tile, then we know that value must be in that row/col in that tile.  We can clear
+    // that possible from all other cells in the tile
+    processBlockRowCol() {
+        this.log("Processing  Block Row/Col Interaction");
+        let possiblesCleared = 0;
+        
+        this.iterateCellsByStructureAll("skipTile", (cells, dir, dirNum) => {
+            let pMap = this.getPossibleMap(cells);
+            for (let [p, set] of pMap) {
+                if (set.size === 2 || set.size === 3) {
+                    // see if the whole set of cells is in the same tile
+                    let tileNumUnion = SpecialSet.unionFromProp(set, "tileNum");
+                    // if we have only one tile, then we found our condition
+                    if (tileNumUnion.size === 1) {
+                        let output = `found interaction between tile and ${dir} ${dirNum} for possible ${p} in cells: ${cellsToStr(set)}, clearing possible ${p} from rest of tile`
+                        this.log(output);
+                        // we can eliminate this possible from anywhere else in the tile
+                        let tileCells = new SpecialSet(this.getOpenCellsTile(tileNumUnion.getFirst()));
+                        // remove cells from this row
+                        tileCells.remove(cells);
+                        let origCnt = possiblesCleared;
+                        possiblesCleared += this.clearListOfPossibles(tileCells, [p], 1);
+                        if (possiblesCleared !== origCnt) {
+                            // need to start again since pMap and open cells may be invalid now
+                            this.saveSolution(output);
+                            return "again";
+                        }
+                    }
+                }
+            }                
+        });
+        
+        return possiblesCleared;
+    }
+    
     // If there are only two cells or three cells in a tile that can contain a particular possible value and those cells
     // share a row or column, then that possible can be cleared from the rest of that row or column
     processPointingPairsTriples() {
@@ -1080,10 +1117,8 @@ class Board {
                 if (set.size === 2 || set.size === 3) {
                     // need to figure out of these cells are in same row or col
                     for (let dir of ["row", "col"]) {
-                        let union = new SpecialSet();
-                        for (let cell of set) {
-                            union.add(cell[dir]);
-                        }
+                        // get union of all row or col numbers
+                        let union = SpecialSet.unionFromProp(set, dir);
                         // if the union of all the row or col numbers has only one value, they must all have the same value
                         if (union.size === 1) {
                             // all the matched cells must all be in the same row/col here
@@ -1590,6 +1625,7 @@ class Board {
     }
 
     // swordfish (3 rows covering 3 columns) and jellyfish (4 rows covering 4 columns)
+    // NOTE: An xwing pattern is really just a fish with 2 columns/2 rows so we could use this code for x-wings too
     processFish() {
         let possiblesCleared = 0;
         
@@ -2119,6 +2155,7 @@ class Board {
             "processNakedPairs",
             "processNakedTriplesQuads",
             "processPointingPairsTriples",
+            "processBlockRowCol",
             "processHiddenSubset",
             "processFish",
             "processXwing",

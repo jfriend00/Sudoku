@@ -2215,14 +2215,16 @@ class Board {
 // options here are passed straight through to b.solve()
 // options.showSolutionsSummary means to show the summary of solutions
 function runBoard(boardStr, name, options = {}) {
-    options.name = options.name || "";
-    if (options.name) {
-        console.log(`Running board ${options.name}`);
+    name = name || "";
+    let opts = Object.assign({}, options);
+    opts.name = opts.name || name;
+    if (opts.name) {
+        console.log(`Running board ${opts.name}`);
     }
     let b = new Board(boardStr);
-    let opens = b.solve(options);
+    let opens = b.solve(opts);
     
-    if (options.showSolutionsSummary) {
+    if (opts.showSolutionsSummary) {
         console.log("\nSolutions:\n", b.solutions.join("\n "));
     }
     
@@ -2291,7 +2293,7 @@ function run() {
     for (let item of openResults) {
         let expectedOpenCells = unsolved[item.name];
         if (typeof expectedOpenCells === "undefined") {
-            unexpected.push(`Puzzle ${item.name} was unsolved, expecting it to be solved.`);
+            unexpected.push(`Puzzle ${item.name} was unsolved and had ${item.numOpenCells} open cells - expecting it to be solved.`);
         } else if (item.numOpenCells !== expectedOpenCells) {
             unexpected.push(`Puzzle ${item.name} was unsolved, had ${item.numOpenCells} open cells, expected ${expectedOpenCells} open cells.`);
         } else {

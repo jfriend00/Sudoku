@@ -6,6 +6,7 @@ const SpecialSet = require('./specialset.js');
 
 
 // Another source of hard puzzles and knowledge: http://sudoku.ironmonger.com/home/home.tpl?board=094002160126300500000169040481006005062010480900400010240690050019005030058700920
+// A long list of solving rules: http://aunegl.com/sudoku-faq.htm
 
 // http://www.stolaf.edu/people/hansonr/sudoku/12rules.htm
 // technique names

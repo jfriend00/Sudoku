@@ -1589,94 +1589,109 @@ class Board {
         return possiblesCleared;
     }
 
-    processSwordfish() {
+    // swordfish (3 rows covering 3 columns) and jellyfish (4 rows covering 4 columns)
+    processFish() {
         let possiblesCleared = 0;
         
-        let candidates = {row: [], column: []};
-        this.iterateCellsByStructureAll("skipTile", (cells, type, typeNum) => {
-            // Create an array of sets for each row
-            // Each entry in the array corresponds to a possible value - 1 (0 position in the array is for cell value 1)
-            // Each entry in the array is a set of cells that contain that possible value for the row
-           let pMap = new MapOfSets(boardSize, 1);
-            // iterate these cells, position is the position in the row/col
-            // typeNum is the row or column number
-            cells.forEach((cell, position) => {
-                if (!cell.value) {
-                    cell.possibles.forEach(p => {
-                        pMap.get(p).add(position);
-                    });
-                }
-            });
-            // Now remove any sets from the map that don't have the right size
-            // The swordfish pattern only wants 2 or 3 cells per row
-            pMap.forEach((set, val) => {
-                if (set.size < 2 || set.size > 3) {
-                    // remove wrong size items from the map
-                    pMap.delete(val);
-                }
-            });            // typeNum is row/col number, so this is assigning a pMap object for that row/col into the array
-            candidates[type][typeNum] = pMap;
-        });
-        
-        // We're looking for 3 rows that have the same possible value in exactly 2-3 positions
-        // And there are exactly 2 other rows that also have only the same 2-3 positions
-        // If found, those 3 rows and those 3 columns form a swordfish formation and we can eliminate
-        // the possible value from the 3 target columns in all the other rows
-        //
-        // The map of sets for each row looks like this:
-        // pMap Map {
-        //  3 => Set { 3, 4 },            // A possible 3 is in cells 3 and 4
-        //  7 => Set { 3, 4 },            // A possible 7 is in cells 3,4
-        //  8 => Set { 0, 1, 3 },         // A possible 8 is in cells 0,1,3
-/*
-        // debugging output
-        ["row", "column"].forEach(tag => {
-            let arr = candidates[tag];
-            this.log(`Output ${tag}:`);
-            this.log(arr);
-        });  
-*/
-        
-        ["row", "column"].forEach(tag => {
-            let arr = candidates[tag];
-            
-            // build an array of maps for each separate value so we have
-            // all the candidate rows for a given cellValue and we can then
-            // just look at all combinations of 3 of them at a time
-            
-            for (let cellValue = 1; cellValue <= boardSize; cellValue++) {
-                // array of objects of this form: {rowNum: n, cells: map}
-                let candidateRows = [];
-                arr.forEach((map, rowNum) => {
-                    let testSet = map.get(cellValue);
-                    if (testSet) {
-                        candidateRows.push({rowNum: rowNum, cells: testSet});
+        function run(width, name) {
+            let pCnt = 0;
+            let candidates = {row: [], column: []};
+            this.iterateCellsByStructureAll("skipTile", (cells, type, typeNum) => {
+                // Create an array of sets for each row
+                // Each entry in the array corresponds to a possible value - 1 (0 position in the array is for cell value 1)
+                // Each entry in the array is a set of cells that contain that possible value for the row
+               let pMap = new MapOfSets(boardSize, 1);
+                // iterate these cells, position is the position in the row/col
+                // typeNum is the row or column number
+                cells.forEach((cell, position) => {
+                    if (!cell.value) {
+                        cell.possibles.forEach(p => {
+                            pMap.get(p).add(position);
+                        });
                     }
                 });
-                if (candidateRows.length >= 3) {
-                    // try all combinations of 3 rows to see if any qualify
-                    let combinations = utils.makeCombinations(candidateRows, 3);
-                    combinations.forEach(arr => {
-                        let candidateCells = arr[0].cells.union(arr[1].cells, arr[2].cells);
-                        if (candidateCells.size === 3) {
-                            let rows = arr.map(item => item.rowNum);
-                            let output = `found swordfish for value ${cellValue}, ${tag === "row" ? "columns" : "rows"} ${candidateCells.toBracketString()} and ${tag}s [${rows.join(",")}]`;
-                            this.log(output);
-                            
-                            // get opposite direction for clearing
-                            let direction = (tag === "row" ? "column" : "row");
-                            let origPossiblesCleared = possiblesCleared;
-                            candidateCells.forEach(num => {
-                                possiblesCleared += this.clearPossibles(direction, num, cellValue, new Set(rows));                                
-                            });
-                            if (possiblesCleared !== origPossiblesCleared) {
-                                this.saveSolution(output);
-                            }
+                // Now remove any sets from the map that don't have the right size
+                // The swordfish pattern only wants 2 or 3 cells per row
+                pMap.forEach((set, val) => {
+                    if (set.size < 2 || set.size > width) {
+                        // remove wrong size items from the map
+                        pMap.delete(val);
+                    }
+                });            // typeNum is row/col number, so this is assigning a pMap object for that row/col into the array
+                candidates[type][typeNum] = pMap;
+            });
+            
+            // We're looking for 3 rows that have the same possible value in exactly 2-3 positions
+            // And there are exactly 2 other rows that also have only the same 2-3 positions
+            // If found, those 3 rows and those 3 columns form a swordfish formation and we can eliminate
+            // the possible value from the 3 target columns in all the other rows
+            //
+            // The map of sets for each row looks like this:
+            // pMap Map {
+            //  3 => Set { 3, 4 },            // A possible 3 is in positions 3 and 4
+            //  7 => Set { 3, 4 },            // A possible 7 is in positions 3,4
+            //  8 => Set { 0, 1, 3 },         // A possible 8 is in positions 0,1,3
+    /*
+            // debugging output
+            ["row", "column"].forEach(tag => {
+                let arr = candidates[tag];
+                this.log(`Output ${tag}:`);
+                this.log(arr);
+            });  
+    */
+            
+            ["row", "column"].forEach(tag => {
+                let arr = candidates[tag];
+                
+                // build an array of maps for each separate value so we have
+                // all the candidate rows for a given possible and we can then
+                // just look at all combinations of 3 of them at a time
+                
+                for (let possible = 1; possible <= boardSize; possible++) {
+                    // create array of objects of this form: {rowNum: n, positions: map}
+                    let candidateRows = [];
+                    arr.forEach((map, rowNum) => {
+                        let testSet = map.get(possible);
+                        if (testSet) {
+                            // candidateRows is the list of rows that have the right number of possibles 
+                            // for the possible we're testing in this iteration of the loop
+                            candidateRows.push({rowNum: rowNum, positions: testSet});
                         }
-                    })
+                    });
+                    // if we found enough rows for this possible number
+                    if (candidateRows.length >= width) {
+                        // try all combinations of these rows to see if any qualify
+                        let combinations = utils.makeCombinations(candidateRows, width);
+                        combinations.forEach(arr => {
+                            let candidatePositions = new SpecialSet();
+                            for (let item of arr) {
+                                candidatePositions.addTo(item.positions);
+                            }
+                            if (candidatePositions.size === width) {
+                                let rows = arr.map(item => item.rowNum);
+                                let output = `found ${name} for value ${possible}, ${tag === "row" ? "columns" : "rows"} ${candidatePositions.toBracketString()} and ${tag}s [${rows.join(",")}]`;
+                                this.log(output);
+                                
+                                // get opposite direction for clearing
+                                let direction = (tag === "row" ? "column" : "row");
+                                let origPossiblesCleared = pCnt;
+                                candidatePositions.forEach(num => {
+                                    pCnt += this.clearPossibles(direction, num, possible, new Set(rows));                                
+                                });
+                                if (pCnt !== origPossiblesCleared) {
+                                    this.saveSolution(output);
+                                }
+                            }
+                        })
+                    }
                 }
-            }
-        });
+            });
+            return pCnt;
+        }
+
+        // look for the larger ones first
+        possiblesCleared += run.call(this, 4, "jellyfish");      // jellyfish
+        possiblesCleared += run.call(this, 3, "swordfish");      // swordfish
             
         return possiblesCleared;
     }
@@ -2105,8 +2120,8 @@ class Board {
             "processNakedTriplesQuads",
             "processPointingPairsTriples",
             "processHiddenSubset",
+            "processFish",
             "processXwing",
-            "processSwordfish",
             "processXYWing",
             "processXWingFinned",
             "processXCyles"

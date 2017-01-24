@@ -21,7 +21,12 @@ function leadingCap(str) {
 // got this code online: http://www.w3resource.com/javascript-exercises/javascript-function-exercise-21.php
 // This code is a little brute force in that it's making all possible permutations and 
 // then just returning the ones of desired length, but for smallish arrays, it is easy
-function makeCombinations(arr, len) {
+// The incoming array argument can be either an array or a Set
+function makeCombinations(array, len) {
+    let arr = array;
+    if (arr instanceof Set) {
+        arr = Array.from(array);
+    }
     let resultSet = [], result, x, i;
     
     // shortcut special cases

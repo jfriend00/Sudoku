@@ -6,9 +6,11 @@ class SpecialSet extends Set {
     
     // return new SpecialSet that is the union of all the property values from the iterable
     // can be used to collect all the properties from an iterable of objects
-    static unionFromProp(iterable, prop) {
+    static unionFromProp(prop, ...iterables) {
         let newSet = new SpecialSet();
-        newSet.addToFromProp(iterable, prop);
+        for (let iterable of iterables) {
+            newSet.addToFromProp(prop, iterable);
+        }
         return newSet;
     }
    
@@ -24,7 +26,7 @@ class SpecialSet extends Set {
     }
     
     // iterate through the iterable and add the value for that property name to the set
-    addToFromProp(iterable, prop) {
+    addToFromProp(prop, iterable) {
         for (let item of iterable) {
             this.add(item[prop]);
         }

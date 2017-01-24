@@ -130,8 +130,21 @@ class SpecialMap extends Map {
     toNumberString() {
         return this.toSortedArrayNumber().join(",");
     }
+}
+
+class MapOfArrays extends Map {
+    constructor(arg) {
+        super(arg);
+    }
     
-    
+    add(key, val) {
+        let item = this.get(key);
+        if (!item) {
+            item = [];
+            this.set(key, item);
+        }
+        item.push(val);
+    }
 }
 
 // initialize a Map of Sets
@@ -863,6 +876,15 @@ class Board {
         return totalCellsSet;
     }
     
+    // store saveSolution message if any possibles are cleared
+    clearListOfPossiblesMsg(cells, possibleClearList, msg, nestLevel) {
+        let cnt = this.clearListOfPossibles(cells, possibleClearList, nestLevel);
+        if (cnt) {
+            this.saveSolution(msg);
+        }
+        return cnt;
+    }
+    
     // returns a map of sets that tells you which cells each possible value is in
     // The map is indexed by possible value
     //     The value in the map for each possible is a set of cells
@@ -1074,7 +1096,7 @@ class Board {
             for (let [p, set] of pMap) {
                 if (set.size === 2 || set.size === 3) {
                     // see if the whole set of cells is in the same tile
-                    let tileNumUnion = SpecialSet.unionFromProp(set, "tileNum");
+                    let tileNumUnion = SpecialSet.unionFromProp("tileNum", set);
                     // if we have only one tile, then we found our condition
                     if (tileNumUnion.size === 1) {
                         let output = `found interaction between tile and ${dir} ${dirNum} for possible ${p} in cells: ${cellsToStr(set)}, clearing possible ${p} from rest of tile`
@@ -1118,7 +1140,7 @@ class Board {
                     // need to figure out of these cells are in same row or col
                     for (let dir of ["row", "col"]) {
                         // get union of all row or col numbers
-                        let union = SpecialSet.unionFromProp(set, dir);
+                        let union = SpecialSet.unionFromProp(dir, set);
                         // if the union of all the row or col numbers has only one value, they must all have the same value
                         if (union.size === 1) {
                             // all the matched cells must all be in the same row/col here
@@ -1816,6 +1838,210 @@ class Board {
         
     }
     
+    // Documentation of rectangles: http://www.sudokuwiki.org/Unique_Rectangles
+    // type 1 is a rectangle where three corners are the same pair and one corner has extra possibles
+    //     you can remove the pair from that corner that has extras
+    // type 2 is a rectangle where two neighboring cells of the rectange that are in the same tile
+    //     each have one extra possible.  In this case, the one extra possible must appear
+    //     in at least one of those cells so you can eliminate it from elsewhere in the tile 
+    //     or from the row/col of the two rectangle cells that have the 
+    //     extra possible (called the roof of the rectangle)
+    // type 2B is the same as type 2, but the roof cells are not in the same tile.  Here
+    //     you can only eliminate the extra possible from the row/col of the roof, not
+    //     from the tile (as in type 2)
+    // type 2C has the extra possible in two opposite corners of the rectangle.  Here
+    //     the extra possible must exist in one of the two corners so you can remove it
+    //     from the intersection of the two corner's buddies (which is usually just from
+    //     one intersecting cell)
+    // type 3 is a rectangle where there is the usual floor with two naked matching pairs.
+    //     The roof contains two extra possibles.  We know that one or both of those extras
+    //     must be used to avoid the rectangle pattern.  This creates a pseudo cell that acts
+    //     like a naked pair.  If that naked pair is elsewhere in the row/col of the roof,
+    //     then those two possible values can be eliminated from elsewhere in the row/col
+    //     of the roof (cells that are not in the rectangle and not the naked pair)
+    // type 3B is like type3, but the roof cells are in the same tile.  Then, you can also 
+    //     look for the locked pair inside the tile and, if found, eliminate the pair from
+    //     elsewhere in the tile
+    // type 3B with triple pseudo cells (instead of just pair)
+    // type 4 is a type 3 rectangle with a total of two extra possibles in the two roof corners
+    //     and the two roof corners are in the same tile and one of the corner possibles is
+    //     no where else in the tile (therefore it must occupy one of the corners).  Then
+    //     you can remove the other corner possible from the roof because it can't be
+    //     present or you'd have the impossible pattern
+    // type 4B is the same as type 4, but the roof corners are not in the same tile and
+    //     the roof possible exists uniquely in the row/col (rather than uniquely in the tile
+    //     as with type 4).  The reduction is the same as with Type 4, to remove the other corner value.
+    processRectangles() {
+        this.log("processRectangles");
+        
+        function run(firstRun) {
+            let pCnt = 0;
+            // idea is to create a list of all possible pairs in each cell
+            // and then use that to find all common pairs in the row
+            // and then compare that to all other rows to find rows
+            // that have the same pair match in the same two columns
+            // We don't have to do both rows and columns since the detection
+            // in rows includes both cases.
+            
+            // We're going to need to be able to make all possible pairs from a set
+            // each entry in pairMatchMap represents a pair that exists within a row.
+            // The key in the map is "29:08", value is an array of two cells with possibles 2 and 9 
+            //    in the same row and in columns 0 and 8 in this example
+            let pairMatchMap = new MapOfArrays();
+            for (let row = 0; row < boardSize; row++) {
+                let cells = this.getOpenCellsRow(row);
+                // for each row, make a map of all pairs available
+                // key is a string like "29" which signifies a 29 pair
+                //     value is an array of all cells that contain that pair (each one in a different column)
+                let pairRowMap = new MapOfArrays();
+                for (let c of cells) {
+                    // for each cell make all possible pairs of possibles
+                    let combos = utils.makeCombinations(c.possibles, 2);
+                    for (let item of combos) {
+                        // make key string like "29"
+                        let pairStr = item.sort((a,b) => {b-a}).join("");
+                        pairRowMap.add(pairStr, c);
+                    }
+                }
+                // so now we have a pairRowMap for this row that tells us all pairs that exist in this row
+                // find all combinations of pairs that exist more than once
+                // Let's create a pairMatchIdentifier string that looks like this:
+                //    "29:08"
+                //    29 - the pair in sorted order
+                //    08 - the two columns it appears in
+                // Then, we can put that in a map where the data in the map is an array of cells that contain that pairMatchIdentifier
+                let pairMatchIdentifier;
+                for (let [key, cellArray] of pairRowMap) {
+                    if (cellArray.length > 1) {
+                        if (firstRun) {
+                            this.log(`found common pair {${key}} in row ${row} in columns ${JSON.stringify(cellArray.map(c => c.col))}`);
+                        }
+                        // if this pair appears in more than one place, we have to create all combinations of it
+                        let combos = utils.makeCombinations(cellArray, 2);
+                        for (let columnPair of combos) {
+                            pairMatchIdentifier = key + ":" + columnPair.map(c => c.col).join("");
+                            // add these two cells from this row to the pairMatchMap
+                            pairMatchMap.add(pairMatchIdentifier, columnPair);
+                        }
+                    }
+                }
+            }
+            // now the pairMatchMap is fully populated - build combinations and process them
+            for (let [key, cellArray] of pairMatchMap) {
+                if (cellArray.length > 1) {
+                    let rectangles = utils.makeCombinations(cellArray, 2);
+                    for (let r of rectangles) {
+                        // accumulate all tile numbers because the rectangle must be spread out across exactly two tiles
+                        let tileNums = SpecialSet.unionFromProp("tileNum", r[0], r[1]);
+                        if (tileNums.size == 2) {
+                            let pair = key.split(":")[0].split("").map(n => +n);
+                            let pairSet = new SpecialSet(pair);
+                            let output = `with pair ${pair.join("")} in rows ${r[0][0].row},${r[1][0].row} and in columns ${r[0][0].col},${r[0][1].col}`;
+                            if (firstRun) {
+                                this.log("found rectangle candidate " + output);
+                            }
+                            // now lets see how many corners have extra cells
+                            let allCells = r[0].concat(r[1]);
+                            // cells that have extra possibles
+                            let haveExtras = [];
+                            // map where cell is index and extra possibles is the value for each cell
+                            let extraPossibles = new Map();
+                            // accumulated extra possibles
+                            let extras = new SpecialSet();
+                            
+                            for (let c of allCells) {
+                                if (c.possibles.size > 2) {
+                                    haveExtras.push(c);
+                                    let extraOnes = c.possibles.difference(pairSet);
+                                    extraPossibles.set(c, extraOnes);
+                                    extras.addTo(extraOnes);
+                                }
+                            }
+                            if (haveExtras.size === 0) {
+                                throw new BoardError("Found naked rectangle which means multiple solutions");
+                            }
+                            if (haveExtras.length === 1) {
+                                // must be type 1, clear the core pair from this cell
+                                let msg = `found type1 rectangle ${output}`;
+                                this.log(msg);
+                                let cnt = this.clearListOfPossiblesMsg(haveExtras, pair, msg, 1);
+                                pCnt += cnt;
+                                if (cnt) {
+                                    return pCnt;
+                                }
+                            } else if (haveExtras.length === 2) {
+                                // All type2 conditions have the same requirements
+                                //    Two of the corners have exactly one extra possible value
+                                // 
+                                // When that happens, you can remove that extra possible from any cells
+                                // that can see both corners with the extra possible
+                                
+                                let r1 = haveExtras[0], r2 = haveExtras[1];                            
+                                let r1Extras = extraPossibles.get(r1), r2Extras = extraPossibles.get(r2);
+                                if (r1Extras.size === 1 && r1Extras.equals(r2Extras)) {
+                                    // It is a regular Type 2 - can remove the extra possible from 
+                                    // all cells outside the roof that can see both roof cells
+                                    // first get the extra possible
+                                    let msg = `found type2 rectangle ${output}`;
+                                    this.log(msg);
+                                    let commons = this.getOpenCellsBuddies(r1, true).intersection(this.getOpenCellsBuddies(r2, true));
+                                    let cnt = this.clearListOfPossiblesMsg(commons, r1Extras, msg, 1);
+                                    pCnt += cnt;
+                                    if (cnt) {
+                                        // have to return here because previously saved data structures can be wrong 
+                                        // now that we've cleared possibles
+                                        return pCnt;
+                                    }
+                                } else if (extras.size === 2) {
+                                    // could be a Type 3 with two extra possibles among the two roof cells
+                                    this.log(`could be type 3 rectangle ${output}`);
+                                    // In the intersectionof the buddies of the two roof cells, we need to find a naked pair
+                                    // that matches the two extra possibles.  If we find that, then our two roof cells serve
+                                    // as a pseudo cell that interacts with the naked pair and then we can remove the two
+                                    // possibles that are found in the naked pair from other cells in the intersection between 
+                                    // the buddies of the two roof cells and the naked pair cell.  In a complication, there
+                                    // could be more than one naked pair match found and you can process each separately.
+                                    
+                                    // First find a naked pair
+                                    let commons = this.getOpenCellsBuddies(r1, true).intersection(this.getOpenCellsBuddies(r2, true));
+                                    let cnt = 0;
+                                    for (let c of commons) {
+                                        if (c.possibles.equals(extras)) {
+                                            let msg = `found type3 rectangle intersecting with naked pair ${extras.toBracketString()} in ${c.xy()} ${output}`
+                                            this.log(msg);
+                                            let pairBuddies = this.getOpenCellsBuddies(c, true);
+                                            cnt += this.clearListOfPossiblesMsg(pairBuddies.intersection(commons), extras, msg, 1);
+                                            pCnt += cnt;
+                                        }
+                                    }
+                                    // have to return here because other data is now invalid because we changed possibles
+                                    if (cnt) {
+                                        return pCnt;
+                                    }                                    
+                                }
+                                
+                                // TODO: 
+                                //     3/3B with triple pseudo cells
+                                //     4/4B
+                            }
+                        }                    
+                    }
+                }
+            }
+            
+            return pCnt;
+        }
+        
+        // call this repeatedly until no more are found
+        let cnt = 0, lastCnt, first = true;
+        do {
+            lastCnt = run.call(this, first);
+            first = false;
+            cnt += lastCnt;
+        } while(lastCnt);
+        return cnt;
+    }
+    
     processXCyles() {
         let possiblesCleared = 0;
         // find isolated pairs, try each value and see what common possibles are eliminated in both cases
@@ -2157,6 +2383,7 @@ class Board {
             "processPointingPairsTriples",
             "processBlockRowCol",
             "processHiddenSubset",
+            "processRectangles",
             "processFish",
             "processXwing",
             "processXYWing",
@@ -2194,7 +2421,7 @@ class Board {
             openCells = this.checkBoard();
         } catch(e) {
             this.outputPossibles();
-            this.log(`Final Board: ${name} ${this.outputBoard()}` );
+            this.log(`Final Board: ${options.name} ${this.outputBoard()}` );
             throw e;
         }
         this.outputPossibles();

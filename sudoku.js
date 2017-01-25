@@ -2108,8 +2108,30 @@ class Board {
                     }
                 }
             }
-            // now see if any of these combos conflict with shared buddy pairs
+            // now see if any of these combos overlap with shared buddy pairs
             let commons = this.getOpenCellsBuddies(pair1, true).intersection(this.getOpenCellsBuddies(pair2, true));
+            commons.remove(c => c.possibles.size === 2);
+            
+            // if any of these pair cells contain common possibles, we can create some pseudo cells
+            // for example if there's a 17 and a 37 that can both see each other, we can create a 13 pseudo cell 
+            // because 13 is also eliminated from the pair
+            // filter out combinations that can't see each other
+            let matches = utils.makeCombinations(commons, 2).filter(match => {
+                return match[0].tileNum === match[1].tileNum || match[0].row === match[1].row || match[0].col === match[1].col;
+            });
+            for (let match of matches) {
+                let intersect = match[0].possibles.intersection(match[1].possibles);
+                if (intersect.size === 1) {
+                    // they have one common possible so we can use the other two possibles values as a pseudo cell
+                    let union = match[0].possibles.union(match[1].possibles);
+                    union.remove(intersect);
+                    // add a pseudo cell to the list
+                    commons.add({possibles: union});
+                }
+            }
+            
+            // for each pair-wise combination of possibles, see if any of them match any existing cells
+            // or pseudo cells in the commons set.  If they do, remove them since they are not an allowed combination
             for (let c of commons) {
                 for (let combo of pCombos) {
                     if (c.possibles.equals(new SpecialSet(combo))) {

@@ -1962,7 +1962,7 @@ class Board {
                             }
                             if (haveExtras.length === 1) {
                                 // must be type 1, clear the core pair from this cell
-                                let msg = `found type1 rectangle ${output}`;
+                                let msg = `found type 1 rectangle ${output}`;
                                 this.log(msg);
                                 let cnt = this.clearListOfPossiblesMsg(haveExtras, pair, msg, 1);
                                 pCnt += cnt;
@@ -1982,7 +1982,7 @@ class Board {
                                     // It is a regular Type 2 - can remove the extra possible from 
                                     // all cells outside the roof that can see both roof cells
                                     // first get the extra possible
-                                    let msg = `found type2 rectangle ${output}`;
+                                    let msg = `found type 2 rectangle ${output}`;
                                     this.log(msg);
                                     let commons = this.getOpenCellsBuddies(r1, true).intersection(this.getOpenCellsBuddies(r2, true));
                                     let cnt = this.clearListOfPossiblesMsg(commons, r1Extras, msg, 1);
@@ -1994,7 +1994,7 @@ class Board {
                                     }
                                 } else if (extras.size === 2) {
                                     // could be a Type 3 with two extra possibles among the two roof cells
-                                    this.log(`could be type 3 rectangle ${output}`);
+                                    this.log(`could be type 3 or 4 rectangle ${output}`);
                                     // In the intersectionof the buddies of the two roof cells, we need to find a naked pair
                                     // that matches the two extra possibles.  If we find that, then our two roof cells serve
                                     // as a pseudo cell that interacts with the naked pair and then we can remove the two
@@ -2007,7 +2007,7 @@ class Board {
                                     let cnt = 0;
                                     for (let c of commons) {
                                         if (c.possibles.equals(extras)) {
-                                            let msg = `found type3 rectangle intersecting with naked pair ${extras.toBracketString()} in ${c.xy()} ${output}`
+                                            let msg = `found type 3 rectangle intersecting with naked pair ${extras.toBracketString()} in ${c.xy()} ${output}`
                                             this.log(msg);
                                             let pairBuddies = this.getOpenCellsBuddies(c, true);
                                             cnt += this.clearListOfPossiblesMsg(pairBuddies.intersection(commons), extras, msg, 1);
@@ -2017,12 +2017,42 @@ class Board {
                                     // have to return here because other data is now invalid because we changed possibles
                                     if (cnt) {
                                         return pCnt;
-                                    }                                    
+                                    } else {
+                                        // either didn't detect type 3 or didn't remove anything so, let's check for type 4
+                                        // in type 4, the two roof cells are a conjugate pair for one of the two corner values
+                                        // therefore that value MUST exist in one of the roof cells.  Therefore, the other
+                                        // value cannot exist in those two cells or we'd have the impossible rectangle so that
+                                        // other value can be eliminated.
+                                        // If we get the common buddies of the two roof cells and see no other possibles that match
+                                        // one of the two corner values, then we have a type 4
+                                        for (let p of pairSet) {
+                                            let found = false;
+                                            for (let c of commons) {
+                                                if (c.possibles.has(p)) {
+                                                    found = true;
+                                                    break;
+                                                }
+                                            }
+                                            if (!found) {
+                                                // one of the values was not anywhere in the common elements
+                                                // the other pair can be removed from the roof cells
+                                                let single = pairSet.clone();
+                                                single.delete(p);
+                                                let msg = `found type 4 rectangle where we can remove ${single.getFirst()} from roof cells ${output}`;
+                                                this.log(msg);
+                                                cnt = this.clearListOfPossiblesMsg([r1, r2], single, msg, 1);
+                                                pCnt += cnt;
+                                                if (cnt) {
+                                                    return pCnt;
+                                                }
+                                                break;
+                                            }
+                                        }
+                                    }
                                 }
                                 
                                 // TODO: 
                                 //     3/3B with triple pseudo cells
-                                //     4/4B
                             }
                         }                    
                     }
@@ -2040,6 +2070,85 @@ class Board {
             cnt += lastCnt;
         } while(lastCnt);
         return cnt;
+    }
+    
+    processAlignedPairExclusions() {
+        let pCnt = 0;
+        
+        // There is not a lot written about what are good candidates for this.  I will start by assuming that
+        // we are looking for two cells within the same tile, aligned by row or column that have 3 or more possibles
+        
+        let candidatePairs = [];
+        for (let tileNum = 0; tileNum < boardSize; tileNum++) {
+            let cells = this.getOpenCellsTile(tileNum).filter(c => c.possibles.size > 2);
+            // just get all combinations of two open cells in this tile
+            let combos = utils.makeCombinations(cells, 2);
+            for (let pair of combos) {
+                // now test them to see if they are row or col aligned
+                if (pair[0].row === pair[1].row || pair[0].col === pair[1].col) {
+                    candidatePairs.push(pair);
+                }
+            }
+        }
+        // now we have all the candidate aligned pairs
+        // Steps:
+        //    Build a list of all possible two values combinations for this pair
+        //    Remove any combination where both cells have the same value (because they are in the same tile, this is not possible)
+        //    Build a list of common buddies
+        //    Go through the list of buddies and remove any combination that directly matches a buddy pair
+        
+        for (let pair of candidatePairs) {
+            let pCombos = new SpecialSet();
+            let pair1 = pair[0];
+            let pair2 = pair[1];
+            for (let p1 of pair1.possibles) {
+                for (let p2 of pair2.possibles) {
+                    if (p1 !== p2) {
+                        pCombos.add([p1, p2]);
+                    }
+                }
+            }
+            // now see if any of these combos conflict with shared buddy pairs
+            let commons = this.getOpenCellsBuddies(pair1, true).intersection(this.getOpenCellsBuddies(pair2, true));
+            for (let c of commons) {
+                for (let combo of pCombos) {
+                    if (c.possibles.equals(new SpecialSet(combo))) {
+                        pCombos.delete(combo);
+                    }
+                }
+            }
+            // now we have a remaining set of legal pCombos
+            // we want to see if any possibles in either cell have been eliminated from all legal combos
+            
+            function check(pairCell, index) {
+                let removes = [];
+                for (let p of pairCell.possibles) {
+                    let found = false;
+                    for (let combo of pCombos) {
+                        if (combo[index] === p) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    // did not find p in any combo for pair1, can remove it as a possibility
+                    if (!found) {
+                        removes.push(p);
+                    }
+                }
+                if (removes.length) {
+                    let output = `found aligned pair exclusion for possibles ${removes.join(",")} in cell ${pairCell.xy()} in pair ${cellsToStr(pair)}`;
+                    this.log(output);
+                    this.saveSolution(output);
+                    return this.clearListOfPossibles([pairCell], removes, 1);
+                }
+                return 0;
+            }
+            
+            pCnt += check.call(this, pair1, 0);
+            pCnt += check.call(this, pair2, 1);
+        }
+        
+        return pCnt;
     }
     
     processXCyles() {
@@ -2383,6 +2492,7 @@ class Board {
             "processPointingPairsTriples",
             "processBlockRowCol",
             "processHiddenSubset",
+            "processAlignedPairExclusions",
             "processRectangles",
             "processFish",
             "processXwing",
@@ -2458,21 +2568,25 @@ function runBoard(boardStr, name, options = {}) {
     return opens;
 }
 
-// node sudoku.js [-noguess] boardName
-// node sudoku.js [-noguess] boardString
+// node sudoku.js [-noguess] [-x=processAlignedPairExclusions] boardName
+// node sudoku.js [-noguess] [-x=processAlignedPairExclusions] boardString
 function processArgs() {
-    let options = {};
+    let options = {skipMethods: []};
     let args = process.argv.slice(2);
     for (let arg of args) {
         if (arg.charAt(0) === "-") {
-            switch(arg) {
-                case "-noguess":
-                    options.noGuess = true;
-                    break;
-                default:
-                    console.log(`Unexpected argument ${arg}`);
-                    process.exit(1);
-                    break;
+            if (arg.startsWith("-x=")) {
+                options.skipMethods.push(arg.slice(3));
+            } else {
+                switch(arg) {
+                    case "-noguess":
+                        options.skipMethods.push("processXCyles");
+                        break;
+                    default:
+                        console.log(`Unexpected argument ${arg}`);
+                        process.exit(1);
+                        break;
+                }
             }
         } else {
             // if arg contains only digits, then must be a sudoku pattern
@@ -2495,9 +2609,6 @@ function processArgs() {
 function run() {
     // process the command line arguments
     let options = processArgs();
-    if (options.noGuess) {
-        options.skipMethods = ["processXCyles"];
-    }
 
     let openResults = [];
     // if puzzle is already known here, then just run that puzzle

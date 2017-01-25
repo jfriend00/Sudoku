@@ -34,11 +34,28 @@ class SpecialSet extends Set {
     
     // remove items in this set that are in the otherIterable
     // returns a count of number of items removed
-    remove(otherIterable) {
+    // This is overloaded and can be called as:
+    // remove(otherIterable)
+    // remove(fn);
+    // If you pass a function, it works like .filter() on an array except
+    // it removes items from the current set rather than create a new set
+    remove(arg) {
         let cnt = 0;
-        for (let item of otherIterable) {
-            if (this.delete(item)) {
-                ++cnt;
+        if (typeof arg === "function") {
+            // remove(fn)
+            for (let item of this) {
+                if (arg(item) === false) {
+                    this.delete(item);
+                    cnt++;
+                }
+            }
+        } else {
+            // remove(otherIterable);
+            // remove all the items from otherIterable that are in this set
+            for (let item of arg) {
+                if (this.delete(item)) {
+                    ++cnt;
+                }
             }
         }
         return cnt;
@@ -59,19 +76,6 @@ class SpecialSet extends Set {
         return cnt;
     }
     
-    // pass callback function that returns true to keep, false to remove
-    // The callback function is passed the element to be tested
-    // This is like .filter() except it modifies the current set
-    removeCustom(fn) {
-        let cnt = 0;
-        for (let item of this) {
-            if (fn(item) === false) {
-                this.delete(item);
-                cnt++;
-            }
-        }
-        return cnt;
-    }
     
 // all other methods, return some value and do not modify the underlying set
 

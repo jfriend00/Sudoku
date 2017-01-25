@@ -1823,12 +1823,7 @@ class Board {
                             let buds2 = this.getOpenCellsBuddies(c2, true);
                             // get intersection of two buddies and remove the third cell (probably not required, but seems safe)
                             let cellsToClear = buds1.intersection(buds2);
-                            let pCleared = this.clearListOfPossibles(cellsToClear, leafIntersect);
-                            possiblesCleared += pCleared;
-                            if (pCleared) {
-                                this.saveSolution(output);
-                            }
-                            this.checkBoard();
+                            possiblesCleared += this.clearListOfPossiblesMsg(cellsToClear, leafIntersect, output);
                         }
                     }
                 });
@@ -2073,6 +2068,7 @@ class Board {
     }
     
     processAlignedPairExclusions() {
+        this.log("processing alignedPairExclusions");
         let pCnt = 0;
         
         // There is not a lot written about what are good candidates for this.  I will start by assuming that
@@ -2169,6 +2165,50 @@ class Board {
             pCnt += check.call(this, pair1, 0);
             pCnt += check.call(this, pair2, 1);
         }
+        
+        return pCnt;
+    }
+    
+    // Reference: http://www.sudokuwiki.org/XYZ_Wing
+    processXYZWing() {
+        this.log("processing XYZWing");
+        let pCnt = 0;
+        
+        this.iterateOpenCells((cell, row, col) => {
+            // look for possible hinge cell that has 3 possible values
+            if (cell.possibles.size === 3) {
+                let leafCells = [];
+                let buddies = this.getOpenCellsBuddies(cell, true);
+                for (let c of buddies) {
+                    // look for leaf cell that is a buddy and has exactly 2 possibles 
+                    // and both are in common with hinge
+                    if (c.possibles.size === 2) {
+                        let commonP = c.possibles.intersection(cell.possibles);
+                        if (commonP.size === 2) {
+                            leafCells.push(c);
+                        }
+                    }
+                }
+                if (leafCells.length > 1) {
+                    // Generate all combinations and see which ones meet the criteria
+                    // of having a different two common possibles with the hinge
+                    let allCombos = utils.makeCombinations(leafCells, 2);
+                    for (let combo of allCombos) {
+                        // this condition would be a naked pair and should not happen because it should have already
+                        // eliminated the hinge, but we check for it just to be safe
+                        let c1 = combo[0], c2 = combo[1];
+                        if (c1.possibles.equals(c2.possibles)) continue;
+                        // get the common possible between these two
+                        let commonPossible = c1.possibles.intersection(c2.possibles);
+                        // get common buddies among all three cells
+                        let sharedBuddies = buddies.intersection(this.getOpenCellsBuddies(c1)).intersection(this.getOpenCellsBuddies(c2));
+                        let msg = `found XYZWing with hinge cell ${cell.xy()} and leafs ${cellsToStr(combo)}, removing possible ${commonPossible.getFirst()}`
+                        this.log(msg);
+                        pCnt += this.clearListOfPossiblesMsg(sharedBuddies, commonPossible, msg, 1);
+                    }
+                }
+            }
+        });
         
         return pCnt;
     }
@@ -2519,6 +2559,7 @@ class Board {
             "processFish",
             "processXwing",
             "processXYWing",
+            "processXYZWing",
             "processXWingFinned",
             "processXCyles"
         ];

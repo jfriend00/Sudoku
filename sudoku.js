@@ -1,8 +1,10 @@
 const utils = require('./utils.js');
+const cellsToStr = utils.cellsToStr;
 const sudokuPatternInfo = require('./sudoku-patterns.js');
 const patterns = sudokuPatternInfo.patterns;
 const unsolved = sudokuPatternInfo.unsolved;
-const SpecialSet = require('./specialset.js');    
+const {SpecialSet, SpecialMap, MapOfArrays, MapOfSets, MapOfMaps, ArrayOfSets} = require('./specialset.js');    
+const {LinkData, StrongLinkData} = require('./links.js');
 
 
 // Another source of hard puzzles and knowledge: http://sudoku.ironmonger.com/home/home.tpl?board=094002160126300500000169040481006005062010480900400010240690050019005030058700920
@@ -114,70 +116,6 @@ const tileSize = Math.sqrt(boardSize);
 
     
 
-class SpecialMap extends Map {
-    constructor(arg) {
-        super(arg);
-    }
-    
-    toArray() {
-        return Array.from(this);
-    }
-    
-    toSortedArrayNumber() {
-        return this.toArray().sort((a,b) => a - b);
-    }
-    
-    toNumberString() {
-        return this.toSortedArrayNumber().join(",");
-    }
-}
-
-class MapOfArrays extends Map {
-    constructor(arg) {
-        super(arg);
-    }
-    
-    add(key, val) {
-        let item = this.get(key);
-        if (!item) {
-            item = [];
-            this.set(key, item);
-        }
-        item.push(val);
-    }
-}
-
-// initialize a Map of Sets
-class MapOfSets extends Map {
-    constructor(num, baseKey) {
-        super();
-        let base = baseKey || 0;
-        let end = base + num;
-        for (var i = base; i < end; i++) {
-            this.set(i, new SpecialSet());
-        }
-    }
-}
-
-class MapOfMaps extends Map {
-    constructor(num, baseKey) {
-        super();
-        let base = baseKey || 0;
-        let end = base + num;
-        for (var i = base; i < end; i++) {
-            this.set(i, new SpecialMap());
-        }
-    }
-}
-
-class ArrayOfSets extends Array {
-    constructor(num) {
-        super();
-        for (var i = 0; i < num; i++) {
-            this.push(new SpecialSet());
-        }
-    }
-}
 
 
 // fill array with all possible values
@@ -189,13 +127,6 @@ const allValuesSet = new SpecialSet(allValues);
 
 // some utils
 
-function cellsToStr(collection) {
-    let results = [];
-    for (let cell of collection) {
-        results.push(cell.xy());
-    }
-    return results.join(" ");
-}
 
 // a single cell in the board
 class Cell {
@@ -2213,6 +2144,150 @@ class Board {
         return pCnt;
     }
     
+    // returns an array indexed by possible value (1-9) index
+    //   of maps by cell where the data is a set of other cells it has a strong link to
+    // Example:  let strongLinkCells3 = all[3].get(c)
+    //    gives you a set of cells that have strong links to c
+    // Need: Ability to remove a link (and the corresponding back link) when it is used
+    //       Ability to get next link when your chain runs into a dead-end
+    //       Ability to keep track of a N chains of cells that we have already followed
+    calcStrongLinks() {
+        return new StrongLinkData(this);
+    }
+    
+    processXChains() {
+        this.log("processing X Chains");
+        let pCnt = 0;
+        
+        // identify potential starting cells
+        // follow strong, then weak links until we get overlap between ends of the chain
+        // then remove possibles in cells that see both ends of the chain
+        // The ends of the chain become like a bivalue pair for that one possible value
+        let links = this.calcStrongLinks();
+        links.list();
+
+
+        // allChains is an array indexed by possible value
+        // The data is an array of chains for that possible value
+        let allChains = [];
+        
+        // loop for each possible value
+        for (let p = 1; p <= boardSize; p++) {
+            this.log(`Building x chains for possible ${p}`);
+            let pChains = [];
+            allChains[p] = pChains;
+            let linkData = links.getLinkData(p);
+
+            // variables used in processing a chain segment
+            let chain, curLink, nextLink, currentChainObj;
+            
+            // the chainMap tells us what chainObj is associated with a given cell
+            // it helps us find intesecting chain segments and combine them into the
+            // same chainObj
+            let chainMap = new SpecialMap();
+            
+            while (true) {
+                if (!curLink) {
+                    curLink = linkData.getStartingPoint();
+                    if (!curLink) {
+                        break;
+                    }
+                    this.log(` Chain start: ${curLink.xy()}`);
+                    // create a new chain object here which consists of an array of chains 
+                    //    and a set of all cells in all the chain segments
+                    chain = [curLink];                         // array of cells in this chain segment in chain order
+                    
+                    // if we find this cell in the chainMap, then rather than start a new chainObj, we
+                    // should add this chain segment to that other chainObj
+                    let foundChainObj = chainMap.get(curLink);
+                    if (foundChainObj) {
+                        // add this chain to the other chain obj
+                        foundChainObj.chains.push(chain);
+                        this.log(` New chain at ${curLink.xy()} is part of prior chain`);
+                    } else {
+                        // create a new chain obj
+                        currentChainObj = {chains: [chain]};
+                        pChains.push(currentChainObj);
+                        chainMap.set(curLink, currentChainObj);
+                    }
+                }
+                nextLink = linkData.getNextLink(curLink);
+                if (nextLink) {
+                    this.log(` Link to: ${nextLink.xy()}`);
+                    linkData.removeLink(curLink, nextLink);
+                    let foundChainObj = chainMap.get(nextLink);
+                    if (foundChainObj && foundChainObj !== currentChainObj) {
+                        // need to move this chain to the chainObj we found
+                        this.log(` Chain in progress ${cellsToStr(chain)} found to be part of prior chain at ${nextLink.xy()}`);
+                        foundChainObj.chains.push(chain);
+                        currentChainObj = foundChainObj;
+                        // remove the chainObj we were using
+                        pChains.pop();
+                        
+                        // now reset chainMap for every cell in the chain so far to the new chainObj
+                        for (let cell of chain) {
+                            chainMap.set(cell, currentChainObj);
+                        }
+                        
+                    } else {
+                        chain.push(nextLink);
+                    }
+                    chainMap.set(nextLink, currentChainObj);
+                }
+                curLink = nextLink;
+            }
+            
+            
+            // we've now built all the chains for this possible value
+            // now let's color them
+            // In the color map, a cell is the index and a color will either be -1 or 1
+            for (let chainObj of pChains) {
+                // separate colorMap for each chainObj
+                let colorMap = new SpecialMap();
+                chainObj.colorMap = colorMap;
+                for (let chain of chainObj.chains) {
+                    // Find out if anything in the chain already has a color (because it is connected
+                    //   to a previous chain segment)
+                    // If so, start with that color on that cell
+                    // colors are either 1 or -1 (so they are easy to invert)
+                    this.log(` Processing chain ${cellsToStr(chain)}`);
+                    let startIndex = 0;
+                    let startColor = 1;
+                    for (let i = 0; i < chain.length; i++) {
+                        let cell = chain[i];
+                        if (colorMap.has(cell)) {
+                            startIndex = i;
+                            startColor = colorMap.get(cell);
+                            break;
+                        }
+                    }
+                    // if the startIndex is odd, then the start value for the chain is the 
+                    // opposite of the color of that cell
+                    if (startIndex % 2 !== 0) {
+                        startColor *= -1;
+                    }
+                    let currentColor = startColor;
+                    for (let cell of chain) {
+                        let testColor = colorMap.get(cell);
+                        if (testColor && testColor !== currentColor) {
+                            this.log(`  Found mismatched color for possible ${p} at ${cell.xy()} in chain ${cellsToStr(chain)}`);
+                        }
+                        colorMap.set(cell, currentColor);
+                        this.log(`  Color ${currentColor} for possible ${p} at ${cell.xy()}`);
+                        currentColor *= -1;
+                    }
+                }
+            }
+            // all chains are colored now, we need to look for violations
+            // Rule 2 (from http://www.sudokuwiki.org/Singles_Chains) says that if there is more than one cell with the
+            // same color in any unit (row/col/tile), then all cells with that color in that unit must be off
+            
+            
+        }
+        
+        return pCnt;
+    }
+    
     processXCyles() {
         let possiblesCleared = 0;
         // find isolated pairs, try each value and see what common possibles are eliminated in both cases
@@ -2554,6 +2629,7 @@ class Board {
             "processPointingPairsTriples",
             "processBlockRowCol",
             "processHiddenSubset",
+            "processXChains",
             "processAlignedPairExclusions",
             "processRectangles",
             "processFish",

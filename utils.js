@@ -11,6 +11,15 @@ function makeQtyStr(val) {
 	}
 }
 
+function cellsToStr(collection) {
+    let results = [];
+    for (let cell of collection) {
+        results.push(cell.xy());
+    }
+    return results.join(" ");
+}
+
+
 // capitalize the first letter of the passed in string
 function leadingCap(str) {
     return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
@@ -58,5 +67,5 @@ function makeCombinations(array, len) {
 
 
 
-module.exports = {makeQtyStr, makeCombinations, leadingCap};
+module.exports = {makeQtyStr, makeCombinations, leadingCap, cellsToStr};
 

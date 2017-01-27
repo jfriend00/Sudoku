@@ -2270,7 +2270,9 @@ class Board {
                     for (let cell of chain) {
                         let testColor = colorMap.get(cell);
                         if (testColor && testColor !== currentColor) {
-                            this.log(`  Found mismatched color for possible ${p} at ${cell.xy()} in chain ${cellsToStr(chain)}`);
+                            let msg = `  Found mismatched color for possible ${p} at ${cell.xy()} in chain ${cellsToStr(chain)}`;
+                            this.log(msg);
+                            throw new BoardError(msg);
                         }
                         colorMap.set(cell, currentColor);
                         this.log(`  Color ${currentColor} for possible ${p} at ${cell.xy()}`);

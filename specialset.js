@@ -183,4 +183,91 @@ class SpecialSet extends Set {
 }    
 
 
-module.exports = SpecialSet;
+class SpecialMap extends Map {
+    constructor(arg) {
+        super(arg);
+    }
+    
+    toArray() {
+        return Array.from(this);
+    }
+    
+    toSortedArrayNumber() {
+        return this.toArray().sort((a,b) => a - b);
+    }
+    
+    toNumberString() {
+        return this.toSortedArrayNumber().join(",");
+    }
+}
+
+class MapOfArrays extends Map {
+    constructor(arg) {
+        super(arg);
+    }
+    
+    add(key, val) {
+        let item = this.get(key);
+        if (!item) {
+            item = [];
+            this.set(key, item);
+        }
+        item.push(val);
+    }
+}
+
+// initialize a Map of Sets
+// can also pre-initialize sets if desired
+class MapOfSets extends SpecialMap {
+    constructor(num, baseKey) {
+        super();
+        if (arguments.length > 0) {
+            let base = baseKey || 0;
+            let end = base + num;
+            for (var i = base; i < end; i++) {
+                this.set(i, new SpecialSet());
+            }
+        }
+    }
+    add(key, val) {
+        let item = this.get(key);
+        if (!item) {
+            item = new SpecialSet();
+            this.set(key, item);
+        }
+        item.add(val);
+    }
+    // removes val from the set
+    // if set becomes empty, it removes the key
+    remove(key, val, clearEmpty = true) {
+        let set = this.get(key);
+        set.delete(val);
+        if (clearEmpty && set.size === 0) {
+            this.delete(key);
+        }
+    }
+}
+
+class MapOfMaps extends Map {
+    constructor(num, baseKey) {
+        super();
+        let base = baseKey || 0;
+        let end = base + num;
+        for (var i = base; i < end; i++) {
+            this.set(i, new SpecialMap());
+        }
+    }
+}
+
+class ArrayOfSets extends Array {
+    constructor(num) {
+        super();
+        for (var i = 0; i < num; i++) {
+            this.push(new SpecialSet());
+        }
+    }
+}
+
+
+
+module.exports = {SpecialSet, SpecialMap, MapOfArrays, MapOfSets, MapOfMaps, ArrayOfSets};

@@ -2176,7 +2176,7 @@ class Board {
             this.log(`Building x chains for possible ${p}`);
             let pChains = [];
             allChains[p] = pChains;
-            let linkData = links.getLinkData(p);
+            let {linkData, allCells} = links.getLinkDataObj(p);
 
             // variables used in processing a chain segment
             let chain, curLink, nextLink, currentChainObj;
@@ -2241,16 +2241,17 @@ class Board {
             // we've now built all the chains for this possible value
             // now let's color them
             // In the color map, a cell is the index and a color will either be -1 or 1
-            for (let chainObj of pChains) {
+            for (let [chainObjIndex, chainObj] of pChains.entries()) {
                 // separate colorMap for each chainObj
                 let colorMap = new SpecialMap();
                 chainObj.colorMap = colorMap;
-                for (let chain of chainObj.chains) {
+                this.log(`Processing chain obj ${chainObjIndex+1} of ${pChains.length}`);
+                for (let [i, chain] of chainObj.chains.entries()) {
                     // Find out if anything in the chain already has a color (because it is connected
                     //   to a previous chain segment)
                     // If so, start with that color on that cell
                     // colors are either 1 or -1 (so they are easy to invert)
-                    this.log(` Processing chain ${cellsToStr(chain)}`);
+                    this.log(` Processing chain segment ${i+1} of ${chainObj.chains.length}: ${cellsToStr(chain)}`);
                     let startIndex = 0;
                     let startColor = 1;
                     for (let i = 0; i < chain.length; i++) {
@@ -2279,9 +2280,64 @@ class Board {
                 }
             }
             // all chains are colored now, we need to look for violations
-            // Rule 2 (from http://www.sudokuwiki.org/Singles_Chains) says that if there is more than one cell with the
-            // same color in any unit (row/col/tile), then all cells with that color in that unit must be off
+            // Rule 2 (from http://www.sudokuwiki.org/Singles_Chains) says that if there is more than one cell from the same chain
+            // with the same color in any unit (row/col/tile), then all cells with that color in that unit must be off
             
+            for (let [i, chainObj] of pChains.entries()) {
+                // separate color map for each chain
+                let colorMap = chainObj.colorMap;
+                let colorSet = new SpecialSet(colorMap.keys());
+                let cells = Array.from(colorMap.keys());
+                for (let [index, c1] of cells.entries()) {
+                    let c1Color = colorMap.get(c1), c2Color, c2;
+                    // for each cell, check the rest of the cells to see if we have a Rule 2 violation
+                    for (let i = index + 1; i < cells.length; i++) {
+                        c2 = cells[i];
+                        if (c1 !== c2) {
+                            c2Color = colorMap.get(c2);
+                            // if same row/col/tileNum and colors are the same, it's a violation
+                            if (c1Color === c2Color && (c1.row === c2.row || c1.col === c2.col || c1.tileNum === c2.tileNum)) {
+                                // found Rule 2 violation, remove all the cells in this chain that have the c1color
+                                // keep only cells that have the offending color
+                                let removes = colorSet.filter(c => {
+                                    return colorMap.get(c) === c1Color;
+                                });
+                                let msg = ` found xchain Rule 2 violation between ${cellsToStr([c1, c2])}, able to remove possible ${p} from ${cellsToStr(removes)}`;
+                                this.log(msg);
+                                pCnt += this.clearListOfPossiblesMsg(removes, [p], msg, 1);
+                                // have to return here because lots of things may have changed when we cleared that possible
+                                return pCnt;                                
+                            }
+                        }
+                    }
+                }
+                // Rule 4 says that if any candidate not in the chain can see two different colors in the chain, then it can
+                // be eliminated
+                
+                // get other cells that have this possible that are not in the current chain
+                let otherCells = allCells.difference(colorMap);
+                for (let cell of otherCells) {
+                    // temporary debugging
+                    let buds = this.getOpenCellsBuddies(cell, true);
+                    let overlap = this.getOpenCellsBuddies(cell, true).intersection(colorSet);
+                    if (overlap.size >= 2) {
+                        let accumulateColors = new SpecialSet();
+                        for (let o of overlap) {
+                            accumulateColors.add(colorMap.get(o));
+                        }
+                        if (p === 5 && cell.row === 4 && cell.col === 2) {
+                            let i = 1;   // set breakpoint here
+                        }
+                        if (accumulateColors.size > 1) {
+                            let msg = `  found xchain Rule 4 violation for possible ${p} - cell ${cell.xy()} can see more than one color in chain`;
+                            this.log(msg);
+                            pCnt += this.clearListOfPossiblesMsg([cell], [p], msg, 1);
+                            // have to return here because lots of things may have changed when we cleared that possible
+                            return pCnt;
+                        }
+                    }
+                }
+            }
             
         }
         

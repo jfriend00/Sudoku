@@ -28,6 +28,8 @@ class LinkData extends MapOfSets {
     }
 }
 
+// Collect strong links for each possible
+// And get all cells for each possible
 class StrongLinkData {
     constructor(board) {
         this.build(board);
@@ -39,16 +41,21 @@ class StrongLinkData {
         let data = this.data;
         
         for (let i = 1; i <= boardSize; i++) {
-            data[i] = new LinkData();
+            data[i] = {linkData: new LinkData(), allCells: new SpecialSet()};
         }
         board.iterateCellsByStructureAll((cells, tag, num) => {
             let pMap = board.getPossibleMap(cells);
             for (let [p, set] of pMap) {
+                // only need to collect allCells once in one orientation
+                if (tag === "row") {
+                    data[p].allCells.addTo(set);
+                }
                 if (set.size === 2) {
+                    let linkData = data[p].linkData;
                     let arr = set.toArray();
                     // each cell is a strong link to each other
-                    data[p].add(arr[0], arr[1]);
-                    data[p].add(arr[1], arr[0]);
+                    linkData.add(arr[0], arr[1]);
+                    linkData.add(arr[1], arr[0]);
                 }
             }
         });
@@ -56,14 +63,14 @@ class StrongLinkData {
     
     list() {
         for (let p = 1; p <= boardSize; p++) {
-            let data = this.data[p];
+            let data = this.data[p].linkData;
             for (let [cell, set] of data) {
                 this.board.log(`Strong links with ${p} from ${cell.xy()} to: ${cellsToStr(set)}`)
             }
         }
     }
     
-    getLinkData(p) {
+    getLinkDataObj(p) {
         return this.data[p];
     }
 }

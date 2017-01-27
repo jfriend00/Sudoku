@@ -2229,9 +2229,8 @@ class Board {
                             chainMap.set(cell, currentChainObj);
                         }
                         
-                    } else {
-                        chain.push(nextLink);
-                    }
+                    } 
+                    chain.push(nextLink);
                     chainMap.set(nextLink, currentChainObj);
                 }
                 curLink = nextLink;

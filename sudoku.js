@@ -4,7 +4,7 @@ const sudokuPatternInfo = require('./sudoku-patterns.js');
 const patterns = sudokuPatternInfo.patterns;
 const unsolved = sudokuPatternInfo.unsolved;
 const {SpecialSet, SpecialMap, MapOfArrays, MapOfSets, MapOfMaps, ArrayOfSets} = require('./specialset.js');    
-const {LinkData, StrongLinkData} = require('./links.js');
+const {LinkData, AllLinkData} = require('./links.js');
 
 
 // Another source of hard puzzles and knowledge: http://sudoku.ironmonger.com/home/home.tpl?board=094002160126300500000169040481006005062010480900400010240690050019005030058700920
@@ -2151,8 +2151,8 @@ class Board {
     // Need: Ability to remove a link (and the corresponding back link) when it is used
     //       Ability to get next link when your chain runs into a dead-end
     //       Ability to keep track of a N chains of cells that we have already followed
-    calcStrongLinks() {
-        return new StrongLinkData(this);
+    calcLinks() {
+        return new AllLinkData(this);
     }
     
     processXChains() {
@@ -2163,7 +2163,7 @@ class Board {
         // follow strong, then weak links until we get overlap between ends of the chain
         // then remove possibles in cells that see both ends of the chain
         // The ends of the chain become like a bivalue pair for that one possible value
-        let links = this.calcStrongLinks();
+        let links = this.calcLinks();
         links.list();
 
 
@@ -2176,7 +2176,7 @@ class Board {
             this.log(`Building x chains for possible ${p}`);
             let pChains = [];
             allChains[p] = pChains;
-            let {linkData, allCells} = links.getLinkDataObj(p);
+            let {strongLinkData, weakLinkData, allCells} = links.getLinkDataObj(p);
 
             // variables used in processing a chain segment
             let chain, curLink, nextLink, currentChainObj;
@@ -2188,7 +2188,7 @@ class Board {
             
             while (true) {
                 if (!curLink) {
-                    curLink = linkData.getStartingPoint();
+                    curLink = strongLinkData.getStartingPoint();
                     if (!curLink) {
                         break;
                     }
@@ -2211,10 +2211,10 @@ class Board {
                         chainMap.set(curLink, currentChainObj);
                     }
                 }
-                nextLink = linkData.getNextLink(curLink);
+                nextLink = strongLinkData.getNextLink(curLink);
                 if (nextLink) {
                     this.log(` Link to: ${nextLink.xy()}`);
-                    linkData.removeLink(curLink, nextLink);
+                    strongLinkData.removeLink(curLink, nextLink);
                     let foundChainObj = chainMap.get(nextLink);
                     if (foundChainObj && foundChainObj !== currentChainObj) {
                         // need to move this chain to the chainObj we found

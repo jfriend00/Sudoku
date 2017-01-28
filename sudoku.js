@@ -2168,75 +2168,14 @@ class Board {
 
 
         // allChains is an array indexed by possible value
-        // The data is an array of chains for that possible value
-        let allChains = [];
+        // The data in each allChains array cell is an array of chains for that possible value
+        let allChains = links.makeStrongChains();
         
         // loop for each possible value
         for (let p = 1; p <= boardSize; p++) {
-            this.log(`Building x chains for possible ${p}`);
-            let pChains = [];
-            allChains[p] = pChains;
-            let {strongLinkData, weakLinkData, allCells} = links.getLinkDataObj(p);
-
-            // variables used in processing a chain segment
-            let chain, curLink, nextLink, currentChainObj;
             
-            // the chainMap tells us what chainObj is associated with a given cell
-            // it helps us find intesecting chain segments and combine them into the
-            // same chainObj
-            let chainMap = new SpecialMap();
-            
-            while (true) {
-                if (!curLink) {
-                    curLink = strongLinkData.getStartingPoint();
-                    if (!curLink) {
-                        break;
-                    }
-                    this.log(` Chain start: ${curLink.xy()}`);
-                    // create a new chain object here which consists of an array of chains 
-                    //    and a set of all cells in all the chain segments
-                    chain = [curLink];                         // array of cells in this chain segment in chain order
-                    
-                    // if we find this cell in the chainMap, then rather than start a new chainObj, we
-                    // should add this chain segment to that other chainObj
-                    let foundChainObj = chainMap.get(curLink);
-                    if (foundChainObj) {
-                        // add this chain to the other chain obj
-                        foundChainObj.chains.push(chain);
-                        this.log(` New chain at ${curLink.xy()} is part of prior chain`);
-                    } else {
-                        // create a new chain obj
-                        currentChainObj = {chains: [chain]};
-                        pChains.push(currentChainObj);
-                        chainMap.set(curLink, currentChainObj);
-                    }
-                }
-                nextLink = strongLinkData.getNextLink(curLink);
-                if (nextLink) {
-                    this.log(` Link to: ${nextLink.xy()}`);
-                    strongLinkData.removeLink(curLink, nextLink);
-                    let foundChainObj = chainMap.get(nextLink);
-                    if (foundChainObj && foundChainObj !== currentChainObj) {
-                        // need to move this chain to the chainObj we found
-                        this.log(` Chain in progress ${cellsToStr(chain)} found to be part of prior chain at ${nextLink.xy()}`);
-                        foundChainObj.chains.push(chain);
-                        currentChainObj = foundChainObj;
-                        // remove the chainObj we were using
-                        pChains.pop();
-                        
-                        // now reset chainMap for every cell in the chain so far to the new chainObj
-                        for (let cell of chain) {
-                            chainMap.set(cell, currentChainObj);
-                        }
-                        
-                    } 
-                    chain.push(nextLink);
-                    chainMap.set(nextLink, currentChainObj);
-                }
-                curLink = nextLink;
-            }
-            
-            
+            let pChains = allChains[p];
+            let allCells = links.getAllCells(p);
             // we've now built all the chains for this possible value
             // now let's color them
             // In the color map, a cell is the index and a color will either be -1 or 1

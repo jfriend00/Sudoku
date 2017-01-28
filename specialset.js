@@ -117,6 +117,16 @@ class SpecialSet extends Set {
         return "{" + this.toNumberString() + "}";
     }
     
+    // works like .map() on an array except it only passes the set item to the callback
+    // returns an array
+    map(fn) {
+        let result = [];
+        for (let item of this) {
+            result.push(fn(item));
+        }
+        return result;
+    }
+    
     
     // This is meant to work similarly to [1,2,3].filter(...)
     // Returns a new set with the non-filtered elements in it

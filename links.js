@@ -2,6 +2,30 @@ const {SpecialSet, SpecialMap, MapOfArrays, MapOfSets, MapOfMaps, ArrayOfSets} =
 const {cellsToStr, makeCombinations} = require('./utils.js');
 const boardSize = 9;
 
+// this takes an array of cells
+class SegmentSet extends SpecialSet {
+    constructor(segment) {
+        super();
+        if (segment) {
+            this.add(segment);
+        }
+    }
+    
+    static makeStr(segment) {
+        let x = segment.map(cell => cell.index).sort((a, b) => b - a).join(":");
+        return segment.map(cell => cell.index).sort((a, b) => b - a).join(":");
+    }
+    
+    add(segment) {
+        super.add(SegmentSet.makeStr(segment));
+    }
+    
+    has(segment) {
+        return super.has(SegmentSet.makeStr(segment));
+    }
+    
+}
+
 // Used for keeping track of which links we've already used.  
 // Forms a unique string representation of the cells in the set using
 // the cell indexes.  Then, adds that string to a Set
@@ -61,6 +85,53 @@ class LinkData extends MapOfSets {
         this.remove(c1, c2);
         this.remove(c2, c1);
     }
+    
+}
+
+
+// pass in a LinkData structure
+// create a LinkDataArray structure where keys and lists of cells are
+// ordered in arrays so we can more easily sequence through them by index
+class LinkDataArray extends MapOfArrays {
+    constructor(linkData) {
+        super();
+        
+        this.keys = Array.from(linkData.keys());
+        
+        for (let [cell, set] of linkData) {
+            this.set(cell, Array.from(set));
+        }
+    }
+    
+    // get the key cell by index
+    getKey(index) {
+        return this.keys[index];
+    }
+    
+    // get the next place anchorCell links to by index
+    getLinkFrom(anchorCell, index) {
+        let cellArray = this.get(anchorCell);
+        return cellArray ? cellArray[index] : null;
+    }
+    
+    // return boolean whether this has a link from c1 to c2
+    hasLink(c1, c2) {
+        let s = this.get(c1);
+        if (!s) return false;
+        return s.indexOf(c2) !== -1;
+    }
+}
+
+
+
+// ChainSegment is an array of cells
+class ChainSegment extends Array {
+    constructor(cell) {
+        super();
+        if (cell) {
+            this.push(cell);
+        }
+    }
 }
 
 // A chain is an array of segments that are all connected
@@ -69,11 +140,108 @@ class LinkData extends MapOfSets {
 // If you had just one continuous chain with no branches, you would
 //   just have one segment
 // If you had one spur off your main chain, you would have two segments
-class ChainObject {
-    constructor(beginningCell) {
-        this.chains = [[beginningCell]];
+class Chain {
+    constructor(segment) {
+        this.segments = [];
+        if (segment) {
+            this.segments.push(segment);
+        }
+    }
+    
+    addSegment(segment) {
+        this.segments.push(segment);
+    }
+    
+    remove(segment) {
+        let index = this.segments.indexOf(segment);
+        if (index !== -1) {
+            this.segments.splice(index, 1);
+        }
+    }
+    list(board) {
+        for (let [index, segment] of this.segments.entries()) {
+            board.log(`  segment ${index + 1} of ${this.segments.length} ${cellsToStr(segment)}`);
+        }
+    }
+    
+    clone() {
+        let newChain = new Chain();
+        // copy over all segments
+        for (let segment of this.segments) {
+            this.segments.push(segment.slice());
+        }
     }
 }
+
+// this is a list of Chain objects
+// the chainMap tells us what chain is associated with a given cell
+// it helps us find intesecting chain segments and combine them into the
+// same chain
+class ChainList {
+    constructor() {
+        this.chains = [];
+        this.chainMap = new SpecialMap();
+    }
+    
+    remove(chain) {
+        let index = this.chains.indexOf(chain);
+        if (index !== -1) {
+            this.chains.splice(index, 1);
+        }
+    }
+    
+    list(board, msg = "") {
+        board.log(`Listing chains ${msg}`);
+        for (let [index, chain] of this.chains.entries()) {
+            board.log(` chain ${index + 1} of ${this.chains.length}`);
+            chain.list(board);
+        }
+    }
+    
+    add(chain) {
+        this.chains.push(chain);
+    }
+    
+    // add a cell to a segment, returns segment and chain it was added to
+    // if segment is passed, then chain must be the chain the segment is in
+    // segment and chain may be null if starting a new segment
+    addToSegment(cell, chain, segment) {
+        if (!segment) {
+            segment = new ChainSegment(cell);
+        } else {
+            segment.push(cell);
+        }
+        if (!chain) {
+            chain = new Chain(segment);
+            this.chains.push(chain);
+        }
+        
+        let currentChain = chain;
+        
+        // if the cell is already in another chain, then move this segment to that chian
+        let otherChain = this.chainMap.get(cell);
+        if (otherChain && otherChain !== currentChain) {
+            console.log(` found intersection with other chain, moving segment ${cellsToStr(segment)} to that chain`);
+            currentChain = otherChain;
+
+            // remove prior chain from the ChainList since it is no longer used
+            // FIXME: may have to move all segments in this chain object to that other chain object
+            this.remove(chain);
+            
+            otherChain.addSegment(segment);
+            
+            // now fix the chainMap entries for this segment to point to the new chain
+            for (let cell of segment) {
+                this.chainMap.set(cell, otherChain);
+            }
+        } else {
+            this.chainMap.set(cell, currentChain);
+        }
+        
+        return {currentChain, segment};
+    }
+}
+
 
 // Collect strong links for each possible
 // And get all cells for each possible
@@ -135,17 +303,12 @@ class AllLinkData {
         // loop for each possible value
         for (let p = 1; p <= boardSize; p++) {
             board.log(`Building x chains for possible ${p}`);
-            let pChains = [];
-            allChains[p] = pChains;
-            let {strongLinkData, weakLinkData, allCells} = this.getLinkDataObj(p);
+            let chainList = new ChainList();
+            allChains[p] = chainList;
+            let {strongLinkData} = this.getLinkDataObj(p);
 
             // variables used in processing a chain segment
-            let chain, curLink, nextLink, currentChainObj;
-            
-            // the chainMap tells us what chainObj is associated with a given cell
-            // it helps us find intesecting chain segments and combine them into the
-            // same chainObj
-            let chainMap = new SpecialMap();
+            let segment, curLink, nextLink, currentChain;
             
             while (true) {
                 if (!curLink) {
@@ -154,47 +317,149 @@ class AllLinkData {
                         break;
                     }
                     board.log(` Chain start: ${curLink.xy()}`);
-                    // create a new chain object here which consists of an array of chains 
-                    //    and a set of all cells in all the chain segments
-                    chain = [curLink];                         // array of cells in this chain segment in chain order
-                    
-                    // if we find this cell in the chainMap, then rather than start a new chainObj, we
-                    // should add this chain segment to that other chainObj
-                    let foundChainObj = chainMap.get(curLink);
-                    if (foundChainObj) {
-                        // add this chain to the other chain obj
-                        foundChainObj.chains.push(chain);
-                        board.log(` New chain at ${curLink.xy()} is part of prior chain`);
-                    } else {
-                        // create a new chain obj
-                        currentChainObj = {chains: [chain]};
-                        pChains.push(currentChainObj);
-                        chainMap.set(curLink, currentChainObj);
-                    }
+                    ({currentChain, segment} = chainList.addToSegment(curLink));
                 }
                 nextLink = strongLinkData.getNextLink(curLink);
                 if (nextLink) {
                     board.log(` Link to: ${nextLink.xy()}`);
+                    // remove this link from the link data since it is now used
                     strongLinkData.removeLink(curLink, nextLink);
-                    let foundChainObj = chainMap.get(nextLink);
-                    if (foundChainObj && foundChainObj !== currentChainObj) {
-                        // need to move this chain to the chainObj we found
-                        board.log(` Chain in progress ${cellsToStr(chain)} found to be part of prior chain at ${nextLink.xy()}`);
-                        foundChainObj.chains.push(chain);
-                        currentChainObj = foundChainObj;
-                        // remove the chainObj we were using
-                        pChains.pop();
-                        
-                        // now reset chainMap for every cell in the chain so far to the new chainObj
-                        for (let cell of chain) {
-                            chainMap.set(cell, currentChainObj);
-                        }
-                        
-                    } 
-                    chain.push(nextLink);
-                    chainMap.set(nextLink, currentChainObj);
+                    
+                    // add this link to the current segment
+                    ({currentChain, segment} = chainList.addToSegment(nextLink, currentChain, segment));
                 }
                 curLink = nextLink;
+            }
+            chainList.list(board);
+        }
+        return allChains;
+    }
+    
+    // Source: http://www.sudokuwiki.org/X_Cycles and http://www.sudokuwiki.org/X_Cycles_Part_2
+    // Eliminations
+    //   Nice loops rule 1: Continuous loop, no imperfections
+    //       Eliminate any possibles that share a unit with both ends of a weak link
+    //   Nice loops rule 2:
+    //       If two adjacent strong links in a loop, then the apex of the intersection between
+    //       the two strong links has to have the value of the loop, therefore you can set its value
+    //   Nice loops rule 3:
+    //       For an open chain that has a strong link at both ends, you can eliminate the possible
+    //       from any cells that see both ends of the chain (because on end of the other has to
+    //       have the value (they are essentially a locked pair)
+    
+    makeAlternatingChains() {
+        let board = this.board;
+        let allChains = [];
+        // loop for each possible value
+        for (let p = 1; p <= boardSize; p++) {
+            board.log(`Building x cycle chains for possible ${p}`);
+            // list of chains we've formed that are worth keeping
+            let chainList = new ChainList();
+            allChains[p] = chainList;
+            
+            let {strongLinkData, weakLinkData, allCells} = this.getLinkDataObj(p);
+            
+            let strongArrays = new LinkDataArray(strongLinkData);
+            let weakArrays = new LinkDataArray(weakLinkData);
+            
+            
+            // while in the process of creating the chain, we keep a data structure that is an array of this:
+            // [{cell: cell, index: index, priorLinkType: 1}]
+            // cell is the cell involved in this part of the chain
+            // index is the index in the LinkDataArray for the previous cell in the chain
+            // priorLinkType is 1 for a strong link, -1 for a weak link
+            // The general idea here is that when we need to backtrack, we can 
+            //    take the previous cell in the chain and this index
+            //    increment the index and then try the next cell that
+            //    the previous cell links to
+            // This allows us to backtrack in what we've built so far to try other
+            //     combinations of linked cells.  If we keep incrementing each index
+            //     and try all legal values of each index, we will eventually build all
+            //     possible chains
+            
+            // seed the chain with the first strong link we have
+            // we set the prior link type to -1 so we'll get a strong link from here to start the chain
+            let firstIndex = 0;
+            let firstCell = strongArrays.getKey(firstIndex);
+            if (!firstCell) continue;
+            let linkSequence = [{cell: firstCell, index: 0, priorLinkType: -1}];
+            let cellSet = new SpecialSet([firstCell]);
+            board.log(`New chain start ${firstCell.xy()}`);
+            let segmentSet = new SegmentSet();
+            while (true) {
+                // the purpose of this look is to get next link in the chain
+                let lastPoint = linkSequence[linkSequence.length - 1];
+                let linkType = lastPoint.priorLinkType * -1;
+                
+                // get the right type of data for the next link 
+                let linkData = linkType < 0 ? weakArrays : strongArrays;
+                
+                let nextCell = linkData.getLinkFrom(lastPoint.cell, lastPoint.index);
+                let closedChain = false;
+                if (nextCell) {
+                    closedChain = cellSet.has(nextCell);
+                    if (closedChain) {
+                        board.log(` link to ${nextCell.xy()} and loop found to end the chain`);
+                    } else {
+                        board.log(` link to ${nextCell.xy()}`);
+                    }
+                    cellSet.add(nextCell);
+                    linkSequence.push({cell: nextCell, index: 0, priorLinkType: linkType});
+                } 
+                // we terminate the chain if we've closed a loop or if we don't have another link in the chain
+                if (!nextCell || closedChain) {
+                    if (!nextCell) {
+                        board.log(` did not find ${linkType > 0 ? "strong" : "weak"} link from ${lastPoint.cell.xy()}`);
+                    }
+                    // Evaluate if the linkSequence we have so far is something we should save
+                    // FIXME: this needs more code, but for now I will save anything that is at least 4 points and ends with a strong link
+                    if (linkSequence.length >= 4) {
+                        // make a chain from this and save it
+                        let segment = new ChainSegment();
+                        for (let point of linkSequence) {
+                            segment.push(point.cell);
+                        }
+                        // if the chain ends in a weak link, remove it from the segment we are saving unless it's a closed Chain
+                        if (!closedChain && linkSequence[linkSequence.length - 1].priorLinkType < 0) {
+                            segment.pop();
+                        }
+                        // FIXME: When testing if we've already done this, we have to remove the duplicate cell
+                        //    caused by being circular
+                        // FIXME: Have to separately keep track of circular loops because they have different
+                        //    elimination rules vs. non-circular altenating chains
+                        if (!segmentSet.has(segment)) {
+                            segmentSet.add(segment);
+                            board.log(`Add chain ${cellsToStr(segment)}`);
+                            chainList.add(new Chain(segment));
+                        }
+                    }
+                    
+                    
+                    // backtrack and try other paths
+                    // get rid of the last point we had because it had no more places to go
+                    linkSequence.pop();
+                    // if sequence is empty, use firstIndex to start a new one
+                    if (linkSequence.length === 0) {
+                        let nextStartCell = strongArrays.getKey(++firstIndex);
+                        if (!nextStartCell) {
+                            break;
+                        }
+                        board.log(`New chain start ${nextStartCell.xy()}`);
+                        linkSequence.push({cell: nextStartCell, index: 0, priorLinkType: -1});
+                    } else {
+                        // increment the index here and loop again
+                        lastPoint = linkSequence[linkSequence.length - 1];
+                        board.log(`Backtracking and incrementing index from ${lastPoint.cell.xy()}`);
+                        ++lastPoint.index;
+                    }
+                    
+                    // re-initialize cellSet
+                    cellSet.clear();
+                    for (let point of linkSequence) {
+                        cellSet.add(point.cell);
+                    }
+                }
+                
             }
         }
         return allChains;

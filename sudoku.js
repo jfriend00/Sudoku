@@ -2174,7 +2174,7 @@ class Board {
         // loop for each possible value
         for (let p = 1; p <= boardSize; p++) {
             
-            let pChains = allChains[p];
+            let pChains = allChains[p].chains;
             let allCells = links.getAllCells(p);
             // we've now built all the chains for this possible value
             // now let's color them
@@ -2184,16 +2184,16 @@ class Board {
                 let colorMap = new SpecialMap();
                 chainObj.colorMap = colorMap;
                 this.log(`Processing chain obj ${chainObjIndex+1} of ${pChains.length}`);
-                for (let [i, chain] of chainObj.chains.entries()) {
+                for (let [i, segment] of chainObj.segments.entries()) {
                     // Find out if anything in the chain already has a color (because it is connected
                     //   to a previous chain segment)
                     // If so, start with that color on that cell
                     // colors are either 1 or -1 (so they are easy to invert)
-                    this.log(` Processing chain segment ${i+1} of ${chainObj.chains.length}: ${cellsToStr(chain)}`);
+                    this.log(` Processing chain segment ${i+1} of ${chainObj.segments.length}: ${cellsToStr(segment)}`);
                     let startIndex = 0;
                     let startColor = 1;
-                    for (let i = 0; i < chain.length; i++) {
-                        let cell = chain[i];
+                    for (let i = 0; i < segment.length; i++) {
+                        let cell = segment[i];
                         if (colorMap.has(cell)) {
                             startIndex = i;
                             startColor = colorMap.get(cell);
@@ -2206,10 +2206,10 @@ class Board {
                         startColor *= -1;
                     }
                     let currentColor = startColor;
-                    for (let cell of chain) {
+                    for (let cell of segment) {
                         let testColor = colorMap.get(cell);
                         if (testColor && testColor !== currentColor) {
-                            let msg = `  Found mismatched color for possible ${p} at ${cell.xy()} in chain ${cellsToStr(chain)}`;
+                            let msg = `  Found mismatched color for possible ${p} at ${cell.xy()} in segment ${cellsToStr(segment)}`;
                             this.log(msg);
                             throw new BoardError(msg);
                         }
@@ -2282,6 +2282,15 @@ class Board {
         }
         
         return pCnt;
+    }
+    
+    processAlternatingChains() {
+        let links = this.calcLinks();
+        links.list();
+        let allChains = links.makeAlternatingChains();
+        for (let p = 1; p < allChains.length; ++p) {
+            allChains[p].list(this, `${p}: `);
+        }
     }
     
     processXCyles() {
@@ -2625,6 +2634,7 @@ class Board {
             "processPointingPairsTriples",
             "processBlockRowCol",
             "processHiddenSubset",
+            "processAlternatingChains",
             "processXChains",
             "processAlignedPairExclusions",
             "processRectangles",

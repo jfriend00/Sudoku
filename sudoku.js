@@ -2284,13 +2284,79 @@ class Board {
         return pCnt;
     }
     
+    clearOverlappingPossibles(c1, c2, p, msg, indent) {
+        let b1 = this.getOpenCellsBuddies(c1, true);
+        let b2 = this.getOpenCellsBuddies(c2, true);
+        let clearCells = b1.intersection(b2);
+        return this.clearListOfPossiblesMsg(clearCells, [p], msg, indent);
+    }
+    
+    // Source: http://www.sudokuwiki.org/X_Cycles and http://www.sudokuwiki.org/X_Cycles_Part_2
+    // Eliminations
+    //   Nice loops rule 1: Continuous loop, no imperfections
+    //       Eliminate any possibles that share a unit with both ends of a weak link
+    //   Nice loops rule 2:
+    //       If two adjacent strong links in a loop, then the apex of the intersection between
+    //       the two strong links has to have the value of the loop, therefore you can set its value
+    //   Nice loops rule 3:
+    //       For an open chain that has a strong link at both ends, you can eliminate the possible
+    //       from any cells that see both ends of the chain (because on end of the other has to
+    //       have the value (they are essentially a locked pair)
+    
+    
     processAlternatingChains() {
+        let pCnt = 0;
+        this.log("processAlternatingChains");
         let links = this.calcLinks();
-        links.list();
         let allChains = links.makeAlternatingChains();
+        
+        // now eliminate any possibles we can because of these chains
+        // For now, we assume all links are alternating strong/weak/strong
+        // No chains start or end with weak links
         for (let p = 1; p < allChains.length; ++p) {
-            allChains[p].list(this, `${p}: `);
+            let altChainList = allChains[p];
+            this.log(`Alternating Chains for ${p}:`);
+            altChainList.list(this);
         }
+        for (let p = 1; p < allChains.length; ++p) {
+            let altChainList = allChains[p];
+            
+            // separate out circular and non-circular chains            
+            let {circularChains, nonCircularChains} = altChainList.splitCircular();
+            circularChains.sort((a, b) => {
+                // sort chains so longest is first
+                return b.length - a.length;
+            });
+            
+            for (let altChain of circularChains) {
+                // do Nice Loops 1 eliminations
+                // Find each weak link
+                let weaks = altChain.getWeakLinks();
+                let msg = ` found alternating chain loop for possible ${p} ${altChain.cellsToStr()}`;
+                this.log(msg);
+                let clearCells = new SpecialSet();
+                for (let item of weaks) {
+                    let b1 = this.getOpenCellsBuddies(item[0], true);
+                    let b2 = this.getOpenCellsBuddies(item[1], true);
+                    clearCells.addTo(b1.intersection(b2));
+                }
+                pCnt += this.clearListOfPossiblesMsg(clearCells, [p], msg, 1);
+                if (pCnt !== 0) {
+                    return pCnt;
+                }
+            }
+            for (let altChain of nonCircularChains) {
+                // not circular, look for eliminations based on Nice Loops Rule 3
+                let [s1, s2] = altChain.getStrongEndCells();
+                let msg = ` found alternating chain not closed for possible ${p}, eliminating cells that can see both ends ${altChain.cellsToStr()}`;
+                this.log(msg);
+                pCnt += this.clearOverlappingPossibles(s1, s2, p, msg, 1);
+                if (pCnt !== 0) {
+                    return pCnt;
+                }
+            }
+        }
+        return pCnt;
     }
     
     processXCyles() {

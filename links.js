@@ -2,26 +2,134 @@ const {SpecialSet, SpecialMap, MapOfArrays, MapOfSets, MapOfMaps, ArrayOfSets} =
 const {cellsToStr, makeCombinations} = require('./utils.js');
 const boardSize = 9;
 
+
+// array of AltChain objects
+class AltChainList extends Array {
+    constructor(...args) {
+        super(...args);
+    }
+    
+    list(board) {
+        for (let item of this) {
+            item.list(board);
+        }
+    }
+    splitCircular() {
+        let circularChains = new AltChainList();
+        let nonCircularChains = new AltChainList();
+        for (let altChain of this) {
+            if (altChain.isCircular()) {
+                circularChains.push(altChain);
+            } else {
+                nonCircularChains.push(altChain);
+            }
+        }
+        return {circularChains, nonCircularChains};
+    }
+}
+
+// array of sequence objects
+// makes a shallow copy of the items in sequenceChain that are passed to constructor
+class AltChain extends Array {
+    constructor(...args) {
+        super(...args);
+    }
+    
+    init(sequenceChain) {
+        for (let item of sequenceChain) {
+            this.push(Object.assign({}, item));
+        }
+        return this;
+    }
+    
+    cellsToStr() {
+        let cells = super.map(item => item.cell);
+        return cellsToStr(cells);
+    }
+    
+    list(board) {
+        board.log(' ' + this.cellsToStr());
+    }
+    
+    last() {
+        return this.length ? this[this.length - 1] : undefined;
+    }
+    
+    isCircular() {
+        if (this.length < 2) return false;
+        return this[0].cell.index === this.last().cell.index;
+    }
+    
+    findCell(cell) {
+        for (let [index, obj] of this.entries()) {
+            if (obj.cell === cell) {
+                return index;
+            }
+        }
+        return -1;
+    }
+    
+    getWeakLinks() {
+        let weaks = [];
+        for (let [i, obj] of this.entries()) {
+            if (i > 0 && obj.priorLinkType < 0) {
+                weaks.push([this[i-1].cell, obj.cell]);
+            }
+        }
+        return weaks;
+    }
+    
+    getStrongEndCells() {
+        // assumption is that ends are always strong
+        if (!this.length || this.isCircular()) {
+            return null;
+        }
+        return [this[0].cell, this.last().cell];
+    }
+    
+    getAdjacentStrongLinksCircular() {
+        // assumption that there is not more than one set of adjacent strongs in the loop
+        if (!this.isCircular()) {
+            return null;
+        }
+        for (let [i, obj] of this.entries()) {
+            if (i > 1 && obj.priorLinkType > 0) {
+                if (this[i-1].priorLinkType > 0) {
+                    return [this[i-2].cell, this[i-1].cell, this[i].cell];
+                }
+            }
+        }
+        return null;        
+    }
+    
+}
+
+
 // this takes an array of cells
-class SegmentSet extends SpecialSet {
-    constructor(segment) {
+class AltChainSet extends SpecialSet {
+    constructor(altChain) {
         super();
-        if (segment) {
-            this.add(segment);
+        if (altChain) {
+            this.add(altChain);
         }
     }
     
-    static makeStr(segment) {
-        let x = segment.map(cell => cell.index).sort((a, b) => b - a).join(":");
-        return segment.map(cell => cell.index).sort((a, b) => b - a).join(":");
+    static makeStr(altChain) {
+        let indexValues = altChain.map(item => item.cell.index);
+        if (altChain.isCircular()) {
+            // remove trailing circular duplicate so all loops no matter
+            // where they start have the same makeStr() signature
+            indexValues.pop();
+        }
+        return indexValues.sort((a, b) => a - b).join(":");
     }
     
-    add(segment) {
-        super.add(SegmentSet.makeStr(segment));
+    add(altChain) {
+        super.add(AltChainSet.makeStr(altChain));
     }
     
-    has(segment) {
-        return super.has(SegmentSet.makeStr(segment));
+    has(altChain) {
+        return super.has(AltChainSet.makeStr(altChain));
     }
     
 }
@@ -335,17 +443,6 @@ class AllLinkData {
         return allChains;
     }
     
-    // Source: http://www.sudokuwiki.org/X_Cycles and http://www.sudokuwiki.org/X_Cycles_Part_2
-    // Eliminations
-    //   Nice loops rule 1: Continuous loop, no imperfections
-    //       Eliminate any possibles that share a unit with both ends of a weak link
-    //   Nice loops rule 2:
-    //       If two adjacent strong links in a loop, then the apex of the intersection between
-    //       the two strong links has to have the value of the loop, therefore you can set its value
-    //   Nice loops rule 3:
-    //       For an open chain that has a strong link at both ends, you can eliminate the possible
-    //       from any cells that see both ends of the chain (because on end of the other has to
-    //       have the value (they are essentially a locked pair)
     
     makeAlternatingChains() {
         let board = this.board;
@@ -354,7 +451,7 @@ class AllLinkData {
         for (let p = 1; p <= boardSize; p++) {
             board.log(`Building x cycle chains for possible ${p}`);
             // list of chains we've formed that are worth keeping
-            let chainList = new ChainList();
+            let chainList = new AltChainList();
             allChains[p] = chainList;
             
             let {strongLinkData, weakLinkData, allCells} = this.getLinkDataObj(p);
@@ -385,7 +482,7 @@ class AllLinkData {
             let linkSequence = [{cell: firstCell, index: 0, priorLinkType: -1}];
             let cellSet = new SpecialSet([firstCell]);
             board.log(`New chain start ${firstCell.xy()}`);
-            let segmentSet = new SegmentSet();
+            let altChainSet = new AltChainSet();
             while (true) {
                 // the purpose of this look is to get next link in the chain
                 let lastPoint = linkSequence[linkSequence.length - 1];
@@ -405,32 +502,40 @@ class AllLinkData {
                     }
                     cellSet.add(nextCell);
                     linkSequence.push({cell: nextCell, index: 0, priorLinkType: linkType});
-                } 
+                } else {
+                    board.log(` did not find ${linkType > 0 ? "strong" : "weak"} link from ${lastPoint.cell.xy()}`);
+                }
                 // we terminate the chain if we've closed a loop or if we don't have another link in the chain
                 if (!nextCell || closedChain) {
-                    if (!nextCell) {
-                        board.log(` did not find ${linkType > 0 ? "strong" : "weak"} link from ${lastPoint.cell.xy()}`);
-                    }
                     // Evaluate if the linkSequence we have so far is something we should save
                     // FIXME: this needs more code, but for now I will save anything that is at least 4 points and ends with a strong link
+                    let altChain = new AltChain().init(linkSequence);
+                    
+                    // if it was a closed chain, then remove any tail from the altChain
+                    if (closedChain) {
+                        let foundIndex = altChain.findCell(nextCell);
+                        if (foundIndex > 0) {
+                            // check to see if making this circular here would make weak link ==> weak link
+                            if (linkType < 0 && altChain[foundIndex + 1].priorLinkType < 0) {
+                                board.log(`!!found weak ==> weak circular for possible ${p} at ${nextCell.xy()} ${altChain.cellsToStr()}`);
+                            }
+                            
+                            // removing leading elements up to the point of circular connection
+                            // so there are no spurious tails
+                            altChain.splice(0, foundIndex);
+                        }
+                    }
                     if (linkSequence.length >= 4) {
                         // make a chain from this and save it
-                        let segment = new ChainSegment();
-                        for (let point of linkSequence) {
-                            segment.push(point.cell);
-                        }
                         // if the chain ends in a weak link, remove it from the segment we are saving unless it's a closed Chain
-                        if (!closedChain && linkSequence[linkSequence.length - 1].priorLinkType < 0) {
-                            segment.pop();
+                        // the last link can be weak if its circular
+                        if (!closedChain && altChain.last().priorLinkType < 0) {
+                            altChain.pop();
                         }
-                        // FIXME: When testing if we've already done this, we have to remove the duplicate cell
-                        //    caused by being circular
-                        // FIXME: Have to separately keep track of circular loops because they have different
-                        //    elimination rules vs. non-circular altenating chains
-                        if (!segmentSet.has(segment)) {
-                            segmentSet.add(segment);
-                            board.log(`Add chain ${cellsToStr(segment)}`);
-                            chainList.add(new Chain(segment));
+                        if (!altChainSet.has(altChain)) {
+                            altChainSet.add(altChain);
+                            board.log(`Add chain ${altChain.cellsToStr()}`);
+                            chainList.push(altChain);
                         }
                     }
                     

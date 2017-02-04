@@ -105,6 +105,7 @@ module.exports = {
         uniqueRectangleType4B: 35,
         xyzWing1: 28,
         alignedPairExclusionType2: 42,
+        xcycleloop1: 23,
         
     }
 };

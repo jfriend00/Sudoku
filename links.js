@@ -37,7 +37,7 @@ class AltChain extends Array {
     
     init(sequenceChain) {
         for (let item of sequenceChain) {
-            this.push(Object.assign({}, item));
+            this.push(new AltChainItem(item));
         }
         return this;
     }
@@ -102,6 +102,39 @@ class AltChain extends Array {
         return null;        
     }
     
+    add(cell, index, priorLinkType) {
+        this.push(new AltChainItem(cell, index, priorLinkType));
+    }
+    
+    tagAsStrongStringCircular(cell) {
+        this.strongIntersectCell = cell;
+    }
+    
+    getStrongStrongCircular() {
+        return this.strongIntersectCell;
+    }
+    
+}
+
+class AltChainItem {
+    // constructor can be passed either the three arguments or
+    // another AltChainItem
+    constructor(cellOrObj, index, priorLinkType) {
+        if (cellOrObj instanceof AltChainItem) {
+            // shallow copy properties over
+            Object.assign(this, cellOrObj);
+        } else {
+            this.cell = cellOrObj;
+            this.index = index;
+            this.priorLinkType = priorLinkType;
+        }
+    }
+    isWeak() {
+        return this.priorLinkType < 0;
+    }
+    isStrong() {
+        return this.priorLinkType > 0;
+    }
 }
 
 
@@ -479,13 +512,14 @@ class AllLinkData {
             let firstIndex = 0;
             let firstCell = strongArrays.getKey(firstIndex);
             if (!firstCell) continue;
-            let linkSequence = [{cell: firstCell, index: 0, priorLinkType: -1}];
+            let linkSequence = new AltChain();
+            linkSequence.add(firstCell, 0, -1);
             let cellSet = new SpecialSet([firstCell]);
             board.log(`New chain start ${firstCell.xy()}`);
             let altChainSet = new AltChainSet();
             while (true) {
                 // the purpose of this look is to get next link in the chain
-                let lastPoint = linkSequence[linkSequence.length - 1];
+                let lastPoint = linkSequence.last();
                 let linkType = lastPoint.priorLinkType * -1;
                 
                 // get the right type of data for the next link 
@@ -501,7 +535,7 @@ class AllLinkData {
                         board.log(` link to ${nextCell.xy()}`);
                     }
                     cellSet.add(nextCell);
-                    linkSequence.push({cell: nextCell, index: 0, priorLinkType: linkType});
+                    linkSequence.add(nextCell, 0, linkType);
                 } else {
                     board.log(` did not find ${linkType > 0 ? "strong" : "weak"} link from ${lastPoint.cell.xy()}`);
                 }
@@ -512,20 +546,33 @@ class AllLinkData {
                     let altChain = new AltChain().init(linkSequence);
                     
                     // if it was a closed chain, then remove any tail from the altChain
+                    let loopOK = true;
                     if (closedChain) {
                         let foundIndex = altChain.findCell(nextCell);
-                        if (foundIndex > 0) {
+                        // removing leading elements up to the point of circular connection
+                        // so there are no spurious tails
+                        altChain.splice(0, foundIndex);
+                        
+                        let targetType = altChain[1].priorLinkType;
+                        if (linkType < 0) {
                             // check to see if making this circular here would make weak link ==> weak link
-                            if (linkType < 0 && altChain[foundIndex + 1].priorLinkType < 0) {
-                                board.log(`!!found weak ==> weak circular for possible ${p} at ${nextCell.xy()} ${altChain.cellsToStr()}`);
+                            if (targetType < 0) {
+                                // can't use this link
+                                board.log(`found weak ==> weak circular for possible ${p} at ${nextCell.xy()} in chain ${altChain.cellsToStr()}`);
+                                loopOK = false;
                             }
-                            
-                            // removing leading elements up to the point of circular connection
-                            // so there are no spurious tails
-                            altChain.splice(0, foundIndex);
+                        } else {
+                            // see if we have strong link ==> strong link
+                            // strong/strong are only allowed if there are an odd number of total points
+                            //    which will equate to an even length for altChain because it has the circular point in twice
+                            if (targetType > 0 && (altChain.length % 2 === 0)) {
+                                board.log(`found strong ==> strong circular for possible ${p} at ${nextCell.xy()} in chain ${altChain.cellsToStr()}`);
+                                altChain.tagAsStrongStringCircular(altChain[0].cell);
+                            }
                         }
+                        
                     }
-                    if (linkSequence.length >= 4) {
+                    if (loopOK && linkSequence.length >= 4) {
                         // make a chain from this and save it
                         // if the chain ends in a weak link, remove it from the segment we are saving unless it's a closed Chain
                         // the last link can be weak if its circular
@@ -550,10 +597,10 @@ class AllLinkData {
                             break;
                         }
                         board.log(`New chain start ${nextStartCell.xy()}`);
-                        linkSequence.push({cell: nextStartCell, index: 0, priorLinkType: -1});
+                        linkSequence.add(nextStartCell, 0, -1);
                     } else {
                         // increment the index here and loop again
-                        lastPoint = linkSequence[linkSequence.length - 1];
+                        lastPoint = linkSequence.last();
                         board.log(`Backtracking and incrementing index from ${lastPoint.cell.xy()}`);
                         ++lastPoint.index;
                     }

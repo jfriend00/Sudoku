@@ -2329,6 +2329,15 @@ class Board {
             });
             
             for (let altChain of circularChains) {
+                let cell = altChain.getStrongStrongCircular();
+                if (cell) {
+                    // apply nice loops rule 2 - two strong links together force the apex to have the value
+                    let msg = ` found alternating chain loop with two strong links, setting value of ${cell.xy()} to ${p}, ${altChain.cellsToStr()}`;
+                    this.log(msg);
+                    this.saveSolution(msg);
+                    pCnt += this.setValue(cell, p, 1);
+                    return pCnt;
+                } 
                 // do Nice Loops 1 eliminations
                 // Find each weak link
                 let weaks = altChain.getWeakLinks();
@@ -2348,7 +2357,7 @@ class Board {
             for (let altChain of nonCircularChains) {
                 // not circular, look for eliminations based on Nice Loops Rule 3
                 let [s1, s2] = altChain.getStrongEndCells();
-                let msg = ` found alternating chain not closed for possible ${p}, eliminating cells that can see both ends ${altChain.cellsToStr()}`;
+                let msg = ` found alternating open chain for possible ${p}, eliminating cells that can see both ends ${altChain.cellsToStr()}`;
                 this.log(msg);
                 pCnt += this.clearOverlappingPossibles(s1, s2, p, msg, 1);
                 if (pCnt !== 0) {

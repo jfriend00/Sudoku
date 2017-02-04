@@ -165,7 +165,7 @@ class Cell {
         if (this.possibles.has(val)) {
             let level = nestLevel || 0;
             let leading = Array(level).fill(" ").join("");
-            this.board.log(leading + `removing possible ${val} from ${this.xy()}`, this.possibles);
+            this.board.log(leading + `removing possible ${val} from ${this.xy()} ${this.pList()}`);
             this.possibles.delete(val);
             this.dirty = true;
             /* 
@@ -2319,6 +2319,7 @@ class Board {
             altChainList.list(this);
         }
         for (let p = 1; p < allChains.length; ++p) {
+            this.log(`Examining chains for ${p}`);
             let altChainList = allChains[p];
             
             // separate out circular and non-circular chains            
@@ -2335,7 +2336,7 @@ class Board {
                     let msg = ` found alternating chain loop with two strong links, setting value of ${cell.xy()} to ${p}, ${altChain.cellsToStr()}`;
                     this.log(msg);
                     this.saveSolution(msg);
-                    pCnt += this.setValue(cell, p, 1);
+                    pCnt += this.setValue(cell, p, 2);
                     return pCnt;
                 } 
                 // do Nice Loops 1 eliminations
@@ -2349,7 +2350,7 @@ class Board {
                     let b2 = this.getOpenCellsBuddies(item[1], true);
                     clearCells.addTo(b1.intersection(b2));
                 }
-                pCnt += this.clearListOfPossiblesMsg(clearCells, [p], msg, 1);
+                pCnt += this.clearListOfPossiblesMsg(clearCells, [p], msg, 2);
                 if (pCnt !== 0) {
                     return pCnt;
                 }
@@ -2359,7 +2360,7 @@ class Board {
                 let [s1, s2] = altChain.getStrongEndCells();
                 let msg = ` found alternating open chain for possible ${p}, eliminating cells that can see both ends ${altChain.cellsToStr()}`;
                 this.log(msg);
-                pCnt += this.clearOverlappingPossibles(s1, s2, p, msg, 1);
+                pCnt += this.clearOverlappingPossibles(s1, s2, p, msg, 2);
                 if (pCnt !== 0) {
                     return pCnt;
                 }

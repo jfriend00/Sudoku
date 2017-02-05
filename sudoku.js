@@ -2908,7 +2908,7 @@ function run() {
     // process the command line arguments
     let options = processArgs();
 
-    let openResults = [];
+    let openResults = [], solvedResults = [];
     // if puzzle is already known here, then just run that puzzle
     if (options.puzzle) {
         options.showSolutionsSummary = true;
@@ -2921,6 +2921,8 @@ function run() {
                 let numOpenCells = runBoard(patterns[name], name, options);
                 if (numOpenCells) {
                     openResults.push({name, numOpenCells});
+                } else {
+                    solvedResults.push({name, numOpenCells});
                 }
         }
     }
@@ -2939,6 +2941,17 @@ function run() {
 
     console.log("-----------------------------------------------------------");
     console.log(unexpected.join("\n"));
+    
+    unexpected = [];
+    for (let {name} of solvedResults) {
+        let expected = unsolved[name];
+        if (expected) {
+            unexpected.push(`Puzzle ${name} was solved, but we expected ${expected} open cells.`);
+        }
+    }
+    console.log("-----------------------------------------------------------");
+    console.log(unexpected.join("\n"));
+    
 }
 
 run();

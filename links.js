@@ -43,8 +43,7 @@ class AltChain extends Array {
     }
     
     cellsToStr() {
-        let cells = super.map(item => item.cell);
-        return cellsToStr(cells);
+        return cellsToStr(this.getCells());
     }
     
     list(board) {
@@ -53,6 +52,10 @@ class AltChain extends Array {
     
     last() {
         return this.length ? this[this.length - 1] : undefined;
+    }
+    
+    first() {
+        return this[0];
     }
     
     isCircular() {
@@ -102,8 +105,8 @@ class AltChain extends Array {
         return null;        
     }
     
-    add(cell, index, priorLinkType) {
-        this.push(new AltChainItem(cell, index, priorLinkType));
+    add(cell, index, priorLinkType, pLink, pLinkOther) {
+        this.push(new AltChainItem(cell, index, priorLinkType, pLink, pLinkOther));
     }
     
     tagAsStrongStringCircular(cell) {
@@ -114,12 +117,16 @@ class AltChain extends Array {
         return this.strongIntersectCell;
     }
     
+    getCells() {
+        return super.map(item => item.cell);
+    }
+    
 }
 
 class AltChainItem {
-    // constructor can be passed either the three arguments or
+    // constructor can be passed two to four arguments or
     // another AltChainItem
-    constructor(cellOrObj, index, priorLinkType) {
+    constructor(cellOrObj, index, priorLinkType, pLink, pLinkOther) {
         if (cellOrObj instanceof AltChainItem) {
             // shallow copy properties over
             Object.assign(this, cellOrObj);
@@ -127,6 +134,8 @@ class AltChainItem {
             this.cell = cellOrObj;
             this.index = index;
             this.priorLinkType = priorLinkType;
+            this.pLink = pLink;
+            this.pLinkOther = pLinkOther;
         }
     }
     isWeak() {
@@ -139,7 +148,7 @@ class AltChainItem {
 
 
 // this takes an array of cells
-class AltChainSet extends SpecialSet {
+class AltChainLoopSet extends SpecialSet {
     constructor(altChain) {
         super();
         if (altChain) {
@@ -147,7 +156,9 @@ class AltChainSet extends SpecialSet {
         }
     }
     
-    static makeStr(altChain) {
+    // make canonical representation of a loop so it does not matter
+    // what the altChain we passed in has as the starting cell
+    makeStr(altChain) {
         let indexValues = altChain.map(item => item.cell.index);
         if (altChain.isCircular()) {
             // remove trailing circular duplicate so all loops no matter
@@ -158,13 +169,26 @@ class AltChainSet extends SpecialSet {
     }
     
     add(altChain) {
-        super.add(AltChainSet.makeStr(altChain));
+        super.add(this.makeStr(altChain));
     }
     
     has(altChain) {
-        return super.has(AltChainSet.makeStr(altChain));
+        return super.has(this.makeStr(altChain));
+    }
+}
+
+class AltChainEndsSet extends AltChainLoopSet {
+    constructor(altChain) {
+        super(altChain);
     }
     
+    // here we only care about the ends of the set
+    // so we override makeStr to provide a different implementation
+    // that only looks at the ends
+    makeStr(altChain) {
+        let indexValues = [altChain[0].cell.index, altChain.last().cell.index];
+        return indexValues.sort((a, b) => a - b).join(":");
+    }
 }
 
 // Used for keeping track of which links we've already used.  
@@ -516,7 +540,7 @@ class AllLinkData {
             linkSequence.add(firstCell, 0, -1);
             let cellSet = new SpecialSet([firstCell]);
             board.log(`New chain start ${firstCell.xy()}`);
-            let altChainSet = new AltChainSet();
+            let altChainSet = new AltChainLoopSet();
             while (true) {
                 // the purpose of this look is to get next link in the chain
                 let lastPoint = linkSequence.last();
@@ -636,4 +660,119 @@ class AllLinkData {
         return this.data[p].allCells;
     }
 }
-module.exports = {LinkData, AllLinkData};
+
+// contains an array of pairs for each possible value
+class PairLinkData {
+    constructor(board) {
+        this.board = board;
+        this.build();
+    }
+    
+    build() {
+        let board = this.board;
+        this.allPairs = [];
+        
+        // collect all the pairs data
+        board.iterateOpenCells((cell, row, col) => {
+            if (cell.possibles.size === 2) {
+                this.allPairs.push(cell);
+            }
+        });
+        board.log(`Pairs: ${cellsToStr(this.allPairs)}`)
+    }
+    
+    makeXYChains() {
+        let allPairs = this.allPairs;
+        let board = this.board;
+        
+        let cellSet, linkSequence;
+        let altChainSet = new AltChainEndsSet();
+        let chainList = new AltChainList();
+
+        // start from a given index in the pairs array, find the next cell that is:
+        //    not already in the chain
+        //    a buddy of the previous cell
+        //    has one matching possible
+        // return the cell and the index it was found at and the possible we matched on
+        // if prevLinkP is passed in, then we need to match the other possible on fromCell
+        // if prevLinkP is not passed in, then we can match either possible on fromCell
+        function findNextLink(fromCell, startIndex, prevLinkP) {
+            let [p1, p2] = fromCell.possibles.toArray();
+            let match1 = p1, match2 = p2;
+            // if we have a prevLinkP and p1, p2 are not in the right order, then swap them
+            if (prevLinkP && prevLinkP === match1) {
+                match1 = p2;   // just attempt to match p2
+                match2 = p1;   // p1 becomes the pLinkOther
+            }
+            for (let index = startIndex; index < allPairs.length; index++) {
+                let cell = allPairs[index];
+                let matchP;
+                // if not already in the chain
+                if (!cellSet.has(cell) && cell.isBuddy(fromCell)) {
+                    if (cell.possibles.has(match1)) {
+                        matchP = match1;
+                    } else if (!prevLinkP && cell.possibles.has(match2)) {
+                        matchP = match2;
+                    }
+                    if (matchP) {
+                        let nonMatchTargetP = cell.possibles.difference(new SpecialSet([matchP])).getFirst();
+                        return {nextCell: cell, nextIndex: index, pLink: matchP, pLinkOther: nonMatchTargetP};
+                    }
+                }
+            }
+            return {nextCell: null, nextIndex: 0, pLink: 0, pLinkOther: 0};
+        }
+        
+        // try a chain starting with every different pair we found for this possible
+        for (let [index, firstCell] of allPairs.entries()) {
+            cellSet = new SpecialSet([firstCell]);
+            linkSequence = new AltChain();
+            linkSequence.add(firstCell, 0);
+            while(true) {
+                let lastItem = linkSequence.last();
+                let {nextCell, nextIndex, pLink, pLinkOther} = findNextLink(lastItem.cell, lastItem.index, lastItem.pLink);
+                if (nextCell) {
+                    lastItem.index = nextIndex;
+                    cellSet.add(nextCell);
+                    linkSequence.add(nextCell, 0, 0, pLink, pLinkOther);
+                } else {
+                    // Didn't find a nextCell.  If the chain is long enough, then
+                    // save the chain we have so far, pop off the last element and look some more
+                    if (linkSequence.length >= 3) {
+                        let altChain = new AltChain().init(linkSequence);
+                        if (!altChainSet.has(altChain)) {
+                            // see if the possible we are linked on is the same for both ends
+                            // get the non-linked possible from the first cell
+                            let originP = altChain[0].cell.possibles.difference(altChain[1].cell.possibles).getFirst();
+                            if (originP === altChain.last().pLinkOther) {
+                                // FIXME: altChainSet needs to pay attention to what it was linked on
+                                altChainSet.add(altChain);
+                                board.log(`Add xy chain on {${altChain[1].pLinkOther}} ${altChain.cellsToStr()}`);
+                                chainList.push(altChain);
+                            } else {
+                                board.log(`xy chain ends with different link target ${altChain.cellsToStr()}`);
+                            }
+                        }
+                    }
+                    // drop off the last item and increment the index on the prior item to look for more chain elements
+                    linkSequence.pop();
+                    if (linkSequence.length === 0) {
+                        // done
+                        break;
+                    } else {
+                        // start looking for more ways for the chain to go with an incremented index
+                        ++linkSequence.last().index;
+                        // re-initialize cellSet
+                        cellSet.clear();
+                        for (let point of linkSequence) {
+                            cellSet.add(point.cell);
+                        }
+                    }
+                }
+            }
+        }
+        return chainList;
+    }
+}
+
+module.exports = {LinkData, AllLinkData, PairLinkData};

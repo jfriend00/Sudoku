@@ -4,7 +4,7 @@ const sudokuPatternInfo = require('./sudoku-patterns.js');
 const patterns = sudokuPatternInfo.patterns;
 const unsolved = sudokuPatternInfo.unsolved;
 const {SpecialSet, SpecialMap, MapOfArrays, MapOfSets, MapOfMaps, ArrayOfSets} = require('./specialset.js');    
-const {LinkData, AllLinkData} = require('./links.js');
+const {LinkData, AllLinkData, PairLinkData} = require('./links.js');
 
 
 // Another source of hard puzzles and knowledge: http://sudoku.ironmonger.com/home/home.tpl?board=094002160126300500000169040481006005062010480900400010240690050019005030058700920
@@ -162,7 +162,7 @@ class Cell {
     // returns true if value was set
     // sets dirty flag on cell if possible value was cleared
     clearPossibleValue(val, nestLevel) {
-        if (this.possibles.has(val)) {
+        if (!this.value && this.possibles.has(val)) {
             let level = nestLevel || 0;
             let leading = Array(level).fill(" ").join("");
             this.board.log(leading + `removing possible ${val} from ${this.xy()} ${this.pList()}`);
@@ -219,6 +219,19 @@ class Cell {
         } else {
             return this.row;
         }
+    }
+    
+    hasAny(...possibles) {
+        for (let p of possibles) {
+            if (this.possibles.has(p)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    isBuddy(cell) {
+        return this.tileNum === cell.tileNum || this.row === cell.row || this.col === cell.col;
     }
     
 
@@ -2284,11 +2297,74 @@ class Board {
         return pCnt;
     }
     
-    clearOverlappingPossibles(c1, c2, p, msg, indent) {
+    processXYChains() {
+        let pCnt = 0;
+        this.log("processXYChains");
+        
+        let data = new PairLinkData(this);
+        let chainList = data.makeXYChains();
+        let queue = [];
+        for (let chain of chainList) {
+            let c1 = chain.first().cell;
+            let c2 = chain.last().cell;
+            let p = chain.last().pLinkOther;
+            let msg = ` xy chain, possible ${p}, chain ending ${c1.xy()} ${c1.possibles.toBracketString()}, ${c2.xy()} ${c2.possibles.toBracketString()}, eliminate cells that can see both ends, chain: ${chain.cellsToStr()}`;
+            this.log(msg);
+            this.queueOverlappingPossibles(queue, c1, c2, p, msg, 2, chain.getCells());
+        }
+        // now process all the queued removals
+        pCnt += this.clearQueue(queue);
+        return pCnt;
+    }
+    
+    clearOverlappingPossibles(c1, c2, p, msg, indent, excludes) {
         let b1 = this.getOpenCellsBuddies(c1, true);
         let b2 = this.getOpenCellsBuddies(c2, true);
         let clearCells = b1.intersection(b2);
+        if (excludes) {
+            clearCells.remove(excludes);
+        }
         return this.clearListOfPossiblesMsg(clearCells, [p], msg, indent);
+    }
+    
+    queueOverlappingPossibles(queue, c1, c2, p, msg, indent, excludes) {
+        let origLen = queue.length;
+        let curMsg = msg;
+        let b1 = this.getOpenCellsBuddies(c1, true);
+        let b2 = this.getOpenCellsBuddies(c2, true);
+        let clearCells = b1.intersection(b2);
+        if (excludes) {
+            clearCells.remove(excludes);
+        }
+        for (let cell of clearCells) {
+            if (cell.possibles.has(p)) {
+                let leading = Array(indent + 1).fill(" ").join("");
+                this.log(leading + `queueing to remove possible ${p} from ${cell.xy()} ${cell.possibles.toBracketString()}`);
+                queue.push({cell, p, indent, msg: curMsg});
+                curMsg = null;
+            }
+        }
+        return queue.length - origLen;
+    }
+    
+    clearQueue(queue) {
+        this.log("processing queued removals");
+        let pCnt = 0, changeCnt, checkStop = -1;
+        for (let item of queue) {
+            // temporarily for debugging purposes, only clear the first set of items from the queue
+            if (checkStop == 0) {
+                break;
+            }
+            if (item.msg) {
+                --checkStop;
+            }
+            changeCnt = this.clearListOfPossibles([item.cell], [item.p], item.indent);
+            if (changeCnt && item.msg) {
+                this.saveSolution(item.msg);
+            }
+            pCnt += changeCnt;
+        }
+        return pCnt;
     }
     
     // Source: http://www.sudokuwiki.org/X_Cycles and http://www.sudokuwiki.org/X_Cycles_Part_2
@@ -2710,6 +2786,7 @@ class Board {
             "processPointingPairsTriples",
             "processBlockRowCol",
             "processHiddenSubset",
+            "processXYChains",
             "processAlternatingChains",
             "processXChains",
             "processAlignedPairExclusions",

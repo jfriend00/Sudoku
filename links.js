@@ -506,7 +506,7 @@ class AllLinkData {
         let allChains = [];
         // loop for each possible value
         for (let p = 1; p <= boardSize; p++) {
-            board.log(`Building x cycle chains for possible ${p}`);
+            board.log(`Building alternating chains for possible ${p}`);
             // list of chains we've formed that are worth keeping
             let chainList = new AltChainList();
             allChains[p] = chainList;
@@ -515,6 +515,10 @@ class AllLinkData {
             
             let strongArrays = new LinkDataArray(strongLinkData);
             let weakArrays = new LinkDataArray(weakLinkData);
+            
+            function log(...args) {
+                //board.log.apply(args);
+            }
             
             
             // while in the process of creating the chain, we keep a data structure that is an array of this:
@@ -539,7 +543,7 @@ class AllLinkData {
             let linkSequence = new AltChain();
             linkSequence.add(firstCell, 0, -1);
             let cellSet = new SpecialSet([firstCell]);
-            board.log(`New chain start ${firstCell.xy()}`);
+            log(`New chain start ${firstCell.xy()}`);
             let altChainSet = new AltChainLoopSet();
             while (true) {
                 // the purpose of this look is to get next link in the chain
@@ -554,14 +558,14 @@ class AllLinkData {
                 if (nextCell) {
                     closedChain = cellSet.has(nextCell);
                     if (closedChain) {
-                        board.log(` link to ${nextCell.xy()} and loop found to end the chain`);
+                        log(` link to ${nextCell.xy()} and loop found to end the chain`);
                     } else {
-                        board.log(` link to ${nextCell.xy()}`);
+                        log(` link to ${nextCell.xy()}`);
                     }
                     cellSet.add(nextCell);
                     linkSequence.add(nextCell, 0, linkType);
                 } else {
-                    board.log(` did not find ${linkType > 0 ? "strong" : "weak"} link from ${lastPoint.cell.xy()}`);
+                    log(` did not find ${linkType > 0 ? "strong" : "weak"} link from ${lastPoint.cell.xy()}`);
                 }
                 // we terminate the chain if we've closed a loop or if we don't have another link in the chain
                 if (!nextCell || closedChain) {
@@ -582,7 +586,7 @@ class AllLinkData {
                             // check to see if making this circular here would make weak link ==> weak link
                             if (targetType < 0) {
                                 // can't use this link
-                                board.log(`found weak ==> weak circular for possible ${p} at ${nextCell.xy()} in chain ${altChain.cellsToStr()}`);
+                                log(`found weak ==> weak circular for possible ${p} at ${nextCell.xy()} in chain ${altChain.cellsToStr()}`);
                                 loopOK = false;
                             }
                         } else {
@@ -590,7 +594,7 @@ class AllLinkData {
                             // strong/strong are only allowed if there are an odd number of total points
                             //    which will equate to an even length for altChain because it has the circular point in twice
                             if (targetType > 0 && (altChain.length % 2 === 0)) {
-                                board.log(`found strong ==> strong circular for possible ${p} at ${nextCell.xy()} in chain ${altChain.cellsToStr()}`);
+                                log(`found strong ==> strong circular for possible ${p} at ${nextCell.xy()} in chain ${altChain.cellsToStr()}`);
                                 altChain.tagAsStrongStringCircular(altChain[0].cell);
                             }
                         }
@@ -605,7 +609,7 @@ class AllLinkData {
                         }
                         if (!altChainSet.has(altChain)) {
                             altChainSet.add(altChain);
-                            board.log(`Add chain ${altChain.cellsToStr()}`);
+                            log(`Add chain ${altChain.cellsToStr()}`);
                             chainList.push(altChain);
                         }
                     }
@@ -620,12 +624,12 @@ class AllLinkData {
                         if (!nextStartCell) {
                             break;
                         }
-                        board.log(`New chain start ${nextStartCell.xy()}`);
+                        log(`New chain start ${nextStartCell.xy()}`);
                         linkSequence.add(nextStartCell, 0, -1);
                     } else {
                         // increment the index here and loop again
                         lastPoint = linkSequence.last();
-                        board.log(`Backtracking and incrementing index from ${lastPoint.cell.xy()}`);
+                        log(`Backtracking and incrementing index from ${lastPoint.cell.xy()}`);
                         ++lastPoint.index;
                     }
                     
@@ -750,7 +754,7 @@ class PairLinkData {
                                 board.log(`Add xy chain on {${altChain[1].pLinkOther}} ${altChain.cellsToStr()}`);
                                 chainList.push(altChain);
                             } else {
-                                board.log(`xy chain ends with different link target ${altChain.cellsToStr()}`);
+                                //board.log(`xy chain ends with different link target ${altChain.cellsToStr()}`);
                             }
                         }
                     }

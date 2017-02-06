@@ -154,7 +154,11 @@ class SpecialSet extends Set {
     }
     
     // returns a new set of keys that are in this set, but not in otherSet
+    // otherSet can be any iterable
     difference(otherSet) {
+        if (!(otherSet instanceof Set)) {
+            otherSet = new SpecialSet(otherSet);
+        }
         let newSet = new SpecialSet();
         for (let key of this) {
             if (!otherSet.has(key)) {

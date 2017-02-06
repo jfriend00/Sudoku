@@ -243,6 +243,70 @@ class BoardError extends Error {
     }
 }
 
+class DeferredQueue {
+    constructor(board) {
+        this.board = board;
+        this.queue = [];
+    }
+
+    // meant as an internal method
+    _add(cell, p, msg, level) {
+        if (cell.possibles.has(p)) {
+            this.queue.push({cell, p, msg, level});
+            return 1;
+        }
+        return 0;
+    }
+    
+    clear() {
+        this.queue = [];
+    }
+    
+    // cellsIn is an array or set of cells
+    // exclusions is an optional array or set of cells
+    // possibleClearList is an array or set of possibles
+    // msg is a message to be sent to this.saveSolution() if any possibles
+    //    are going to be removed
+    // level is an optional level of indentation for log messages (defaults to 0)
+    // exclusions may be null
+    // msg and level do not need to be passed if not needed
+    // Returns: cnt of possibles it thinks will be removed (in the future)
+    clearPossibles(cellsIn, possibleClearList, msg, level, exclusions) {
+        let pCnt = 0;
+        let cells = cellsIn;
+        if (exclusions) {
+            if (!(cellsIn instanceof SpecialSet)) {
+                cells = new SpecialSet(cellsIn);
+            }
+            cells = cells.difference(exclusions);
+        }
+        for (let cell of cells) {
+            for (let p of possibleClearList) {
+                pCnt += this._add(cell, p, msg, level);
+            }
+        }
+        return pCnt;
+    }
+    
+    // play back the queue now and actually remove the possibles
+    run() {
+        let changeCnt = 0;
+        let lastMsg, lastDisplayedMsg;
+        for (let {cell, p, msg, level} of this.queue) {
+            if (msg && msg !== lastDisplayedMsg) {
+                this.board.logLevel(level, `processing: ${msg}`);
+                lastDisplayedMsg = msg;
+            }
+            changeCnt = this.board.clearListOfPossibles([cell], [p], level + 1);
+            if (changeCnt && msg && msg !== lastMsg) {
+                this.board.saveSolution(msg);
+                lastMsg = msg;
+            }
+        }
+        return changeCnt;
+    }
+}
+
 class Board {
     constructor(board) {
         this.data = [];
@@ -278,6 +342,11 @@ class Board {
         if (this.loggingEnabled) {
             console.log.apply(console, arguments);
         }
+    }
+    
+    logLevel(level, msg) {
+        let leading = Array(level).fill(" ").join("");
+        this.log(leading + msg);
     }
     
     saveSolution(str) {
@@ -986,9 +1055,8 @@ class Board {
     }
     
     processNakedTriplesQuads() {
-        let possiblesCleared = 0;
-       
         // this is brute force - create all triple and quad combinations and check them
+        let queue = new DeferredQueue(this);
         this.iterateOpenCellsByStructureAll(cells => {
             for (let len of [3,4]) {
                 // if there aren't enough cells, then no need to look further
@@ -1001,30 +1069,15 @@ class Board {
                         union.addTo(cell.possibles);
                     }
                     if (union.size === len) {
-                        let output = `found ${utils.makeQtyStr(len)} {${union.toNumberString()}} in cells ${cellsToStr(combo)}`;
-                        this.log(output);
-                        // clear all possibles in the union from the other cells on the set
-                        let exclusionCells = new SpecialSet(cells);
-                        exclusionCells.remove(combo);
-                        let newPossiblesCleared = this.clearListOfPossibles(exclusionCells, union, 1);
-                        possiblesCleared += newPossiblesCleared;
-                        if (newPossiblesCleared) {
-                            this.saveSolution(output);
-                        }
-                        
-                        // we have to stop processing this set of cells because they may no longer all be open
-                        // and the combinations may no longer be valid
-                        // Because we have possiblesCleared that are non-zero, we will get called again to
-                        // do the additional work
-                        // return "again" causes iterateOpenCellsByStructureAll() to re-call this callback with
-                        // a newly calculated set of cells
-                        if (newPossiblesCleared) return "again";
+                        let msg = `found ${utils.makeQtyStr(len)} {${union.toNumberString()}} in cells ${cellsToStr(combo)}`;
+                        this.log(msg);
+                        queue.clearPossibles(cells, union, msg, 1, combo);
                     }
                 }
             }
         });
-        
-        return possiblesCleared;
+        // now actually run the deferred removals
+        return queue.run();
     }
     
     // look through all rows and columns
@@ -1033,7 +1086,7 @@ class Board {
     // that possible from all other cells in the tile
     processBlockRowCol() {
         this.log("Processing  Block Row/Col Interaction");
-        let possiblesCleared = 0;
+        let queue = new DeferredQueue(this);
         
         this.iterateCellsByStructureAll("skipTile", (cells, dir, dirNum) => {
             let pMap = this.getPossibleMap(cells);
@@ -1043,25 +1096,17 @@ class Board {
                     let tileNumUnion = SpecialSet.unionFromProp("tileNum", set);
                     // if we have only one tile, then we found our condition
                     if (tileNumUnion.size === 1) {
-                        let output = `found interaction between tile and ${dir} ${dirNum} for possible ${p} in cells: ${cellsToStr(set)}, clearing possible ${p} from rest of tile`
-                        this.log(output);
+                        let msg = `found interaction between tile and ${dir} ${dirNum} for possible ${p} in cells: ${cellsToStr(set)}, clearing possible ${p} from rest of tile`
+                        this.log(msg);
                         // we can eliminate this possible from anywhere else in the tile
                         let tileCells = new SpecialSet(this.getOpenCellsTile(tileNumUnion.getFirst()));
-                        // remove cells from this row
-                        tileCells.remove(cells);
-                        let origCnt = possiblesCleared;
-                        possiblesCleared += this.clearListOfPossibles(tileCells, [p], 1);
-                        if (possiblesCleared !== origCnt) {
-                            // need to start again since pMap and open cells may be invalid now
-                            this.saveSolution(output);
-                            return "again";
-                        }
+                        queue.clearPossibles(tileCells, p, msg, 1, cells);
                     }
                 }
             }                
         });
-        
-        return possiblesCleared;
+        // run the deferred removals
+        return queue.run();
     }
     
     // If there are only two cells or three cells in a tile that can contain a particular possible value and those cells
@@ -2796,7 +2841,7 @@ class Board {
             "processXYWing",
             "processXYZWing",
             "processXWingFinned",
-            "processXCyles"
+//            "processXCyles"
         ];
 
         let openCells;
@@ -2955,3 +3000,5 @@ function run() {
 }
 
 run();
+
+

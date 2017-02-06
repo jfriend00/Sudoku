@@ -245,6 +245,9 @@ class BoardError extends Error {
 
 class DeferredQueue {
     constructor(board) {
+        if (!(board instanceof Board)) {
+            throw new Error("Must pass board to DeferredQueue() constructor");
+        }
         this.board = board;
         this.queue = [];
     }
@@ -252,6 +255,7 @@ class DeferredQueue {
     // meant as an internal method
     _add(cell, p, msg, level) {
         if (cell.possibles.has(p)) {
+            this.board.logLevel(level, `queuing to remove possible ${p} from ${cell.xy()} ${cell.possibles.toBracketString()}`);
             this.queue.push({cell, p, msg, level});
             return 1;
         }
@@ -1100,7 +1104,7 @@ class Board {
                         this.log(msg);
                         // we can eliminate this possible from anywhere else in the tile
                         let tileCells = new SpecialSet(this.getOpenCellsTile(tileNumUnion.getFirst()));
-                        queue.clearPossibles(tileCells, p, msg, 1, cells);
+                        queue.clearPossibles(tileCells, [p], msg, 1, cells);
                     }
                 }
             }                
@@ -1113,7 +1117,7 @@ class Board {
     // share a row or column, then that possible can be cleared from the rest of that row or column
     processPointingPairsTriples() {
         this.log("Processing  Pointing Pairs/Triples");
-        let possiblesCleared = 0;
+        let queue = new DeferredQueue(this);
 
         // for each possible value that is present in the tile, build a set of which cells it can be in
         // we then look at which possible values are present in only 2 or 3 cells and then
@@ -1134,27 +1138,18 @@ class Board {
                         if (union.size === 1) {
                             // all the matched cells must all be in the same row/col here
                             // can clear other possibles from this row/col
-                            let output = `found pointing ${utils.makeQtyStr(set.size)} for possible ${p} consisting of ${cellsToStr(set)}`;
-                            this.log(output);
+                            let msg = `found pointing ${utils.makeQtyStr(set.size)} for possible ${p} consisting of ${cellsToStr(set)}`;
+                            this.log(msg);
                             // now clear things - get the open cells in this row or col
-                            let clearCells = new SpecialSet(this.getOpenCellsX(dir, union.getFirst()));
-                            // remove any from this tile
-                            clearCells.remove(cells);
-                            let newPossiblesCleared = this.clearListOfPossibles(clearCells, [p]);
-                            if (newPossiblesCleared) {
-                                this.saveSolution(output);
-                            }
-                            possiblesCleared += newPossiblesCleared;
-                            // After we clear some possibles here, it seems likely that the pMap is no longer accurate
-                            // so we have to return and let it all start over
-                            if (newPossiblesCleared) return possiblesCleared;
+                            let clearCells = this.getOpenCellsX(dir, union.getFirst());
+                            queue.clearPossibles(clearCells, [p], msg, 1, cells);
                         }
                     }
                 }
             }
         }
         
-        return possiblesCleared;
+        return queue.run();
     }
     
     // This technique is very similar to naked subsets, but instead of affecting other cells with the same row, 
@@ -1177,7 +1172,7 @@ class Board {
     //            test each one to see if it's a legal triple or quad
     processHiddenSubset() {
         this.log("Processing  Hidden Subset");
-        let possiblesCleared = 0, pCleared;
+        let queue = new DeferredQueue(this);
         
         // analyze all rows, columns and tiles
         this.iterateOpenCellsByStructureAll((cells, type, typeNum) => {
@@ -1197,26 +1192,18 @@ class Board {
                 // These returns are from the callback, not from the outer function
 
                 // test directly to see if it is a pair, triple or quad already (based on it's length)
-                pCleared = testSubset.call(this, set, otherCellSet);
-                possiblesCleared += pCleared;
-                if (pCleared) return "again";
+                testSubset.call(this, set, otherCellSet);
                 
                 // test for manufactured triples
-                pCleared = makeSubsets.call(this, set, otherCellSet, 3);
-                possiblesCleared += pCleared;
-                if (pCleared) return "again";
+                makeSubsets.call(this, set, otherCellSet, 3);
                 
                 // test for manufactured quads
-                pCleared = makeSubsets.call(this, set, otherCellSet, 4);
-                possiblesCleared += pCleared;
-                // can't be two quads in the same row/col so we just return here
-                if (pCleared) return;
+                makeSubsets.call(this, set, otherCellSet, 4);
             }
         });
         
         // test for triple and quad
         function makeSubsets(startingSet, otherCellSet, desiredSize) {
-            let cnt = 0;
             // calc how much we need to add to the existing set
             var deltaSize = desiredSize - startingSet.size;
             // if nothing to add, then there's nothing new to manufacture so nothing to do here
@@ -1229,14 +1216,12 @@ class Board {
                     candidateSet.addTo(cellsToTry);
                     let otherSet = new SpecialSet(otherCellSet);
                     otherSet.remove(cellsToTry);
-                    cnt += testSubset.call(this, candidateSet, otherSet);
+                    testSubset.call(this, candidateSet, otherSet);
                 }                    
             }
-            return cnt;
         }
         
         function testSubset(candidateSet, otherCellSet) {
-            let cnt = 0;
             // the algorithm here is to get the union of all possibles in the otherCellSet
             // eliminate those from each of the candidates
             // make sure you have at least two possibles left in each candidate
@@ -1264,7 +1249,7 @@ class Board {
                 
                 if (diff.size < 2) {
                     // have to be at least two common possibles in each cell
-                    return cnt;
+                    return;
                 }
                 // accumulate the durable possibles from our candidate cells
                 candidateUnion.addTo(diff);
@@ -1272,28 +1257,22 @@ class Board {
             // See if we have N possibles contained only in N cells
             if (candidateUnion.size === candidateSet.size) {
                 if (isHidden) {
-                    let output = `found hidden subset ${utils.makeQtyStr(candidateSet.size)} with values {${candidateUnion.toNumberString()}} in ${Cell.outputCellList(candidateSet)}`;
-                    this.log(output);
-                    let origCnt = cnt;
+                    let msg = `found hidden subset ${utils.makeQtyStr(candidateSet.size)} with values {${candidateUnion.toNumberString()}} in ${Cell.outputCellList(candidateSet)}`;
+                    this.log(msg);
                     // clear possibles in the candidateSet that are in the otherUnion
                     for (let cell of candidateSet) {
                         let removing = cell.possibles.intersection(otherUnion);
                         if (removing.size) {
-                            this.log(` removing possibles {${removing.toNumberString()}} from ${cell.xy()}`)
-                            cnt += cell.possibles.remove(removing);
+                            queue.clearPossibles([cell], removing, msg, 1);
                         }
                     }
-                    if (cnt !== origCnt) {
-                        this.saveSolution(output);
-                    }
                 } else {
-                    this.log(`found already processed naked ${utils.makeQtyStr(candidateSet.size)} with values {${candidateUnion.toNumberString()}} in ${Cell.outputCellList(candidateSet)}`);
+                    // this.log(`found already processed naked ${utils.makeQtyStr(candidateSet.size)} with values {${candidateUnion.toNumberString()}} in ${Cell.outputCellList(candidateSet)}`);
                 }
             }
-            return cnt;
         }
         
-        return possiblesCleared;
+        return queue.run();
     }
     
 

@@ -92,31 +92,11 @@ const {LinkData, AllLinkData, PairLinkData} = require('./links.js');
 //        with in the chain.  This is kind of a guess and test, but the guesses are swiftly determinate.
 //        I don't know how to recognize this one in code
         
-        
-// Things to code for sure:
-//   Naked Pair
-//   Naked Triplet
-//   Naked Quad
-//   X-Wing
-//   Hidden Pair
-//   Hidden Triplet
-
-
-
-
-
-
 // board is array of objects {val: num, possibles: {}, row: x, col: y, index: n}
 // val === 0, means empty, val > 0 means number assigned
 
 const boardSize = 9;
 const tileSize = Math.sqrt(boardSize);
-
-
-
-    
-
-
 
 // fill array with all possible values
 const allValues = [];
@@ -2548,33 +2528,7 @@ class Board {
             }
         }
         return possiblesCleared;
-    }
-    
-    // type is "row", "column" or "tile"
-    // num is the row number, column number or tile number
-    // val is the possible value to clear
-    // exceptions is a set of indexes or cells not to touch
-    clearPossibles2(type, num, val, exceptions) {
-        let cnt = 0;
-        
-        // build iteration function name
-        let iterateFn = "iterate" + utils.leadingCap(type) + "OpenCells";
-        this[iterateFn](num, (cell, index) => {
-            // if neither cell or index is in the exceptions list, then we can clear the possible
-            if (!exceptions || (!exceptions.has(cell) && !exceptions.has(index))) {
-                if (cell.possibles.delete(val)) {
-                    this.log(`clearPossibles: cell:${cell.xy()}, val:${val}`);
-                    if (cell.possibles.size === 0) {
-                        this.log('error: clearPossibles left no possibles'); 
-                    }
-                    ++cnt;
-                }
-            }
-        });
-        return cnt;
-    }
-    
-    
+    }    
     
     countOpen() {
         let cnt = 0;

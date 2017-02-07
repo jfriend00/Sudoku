@@ -1321,9 +1321,9 @@ class Board {
             // add each possible to the right set of the pMap
             for (let [index, cell] of cells.entries()) {
                 if (!cell.value) {
-                    cell.possibles.forEach(p => {
+                    for (let p of cell.possibles) {
                         pMap.get(p).add(index);
-                    });
+                    }
                 }
             }
             
@@ -1618,9 +1618,9 @@ class Board {
                 // typeNum is the row or column number
                 for (let [position, cell] of cells.entries()) {
                     if (!cell.value) {
-                        cell.possibles.forEach(p => {
+                        for (let p of cell.possibles) {
                             pMap.get(p).add(position);
-                        });
+                        }
                     }
                 }
                 // Now remove any sets from the map that don't have the right size
@@ -2582,27 +2582,27 @@ class Board {
             outputGrid[i].fill(" ");
         }
         
-        possibles.forEach((cellData, index) => {
+        for (let [index, cellData] of possibles.entries()) {
             // calc where data for a given cell index starts
             let baseRow = Math.floor(index / boardSize) * (tileSize + 1);
             let baseCol = (index % boardSize) * (tileSize + 1);
             //this.log(index, baseRow, baseCol);
-            cellData.forEach((p, i) => {
+            for (let [i, p] of cellData.entries()) {
                 let row = Math.floor(i / tileSize);
                 let col = Math.floor(i % tileSize);
                 outputGrid[baseRow + row][baseCol + col] = p;
-            });
-        });
-        outputGrid.forEach((row, index) => {
+            }
+        }
+        for (let [index, row] of outputGrid.entries()) {
             if ((index + 1) % (tileSize + 1) === 0) {
                 row.fill("-");
             }
-            row.forEach((val, index) => {
+            for (let [index, val] of row.entries()) {
                 if ((index + 1) % (tileSize + 1) === 0) {
                     row[index] = "|";
                 }
-            });
-        });
+            }
+        }
         // Add top border
         outputGrid.unshift(outputGrid[3].slice());
         
@@ -2634,9 +2634,9 @@ class Board {
         }
         
         // output the 2D array to console
-        outputGrid.forEach(row => {
+        for (let row of outputGrid) {
             this.log(row.join(""));
-        });
+        }
     }
     
     // a do-nothing process function

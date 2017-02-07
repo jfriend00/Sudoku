@@ -291,10 +291,18 @@ class DeferredQueue {
         }
         return pCnt;
     }
+
+    // same as clearPossibles, but it will calculate a set of overlapping cells for you
+    clearOverlappingPossibles(cell1, cell2, possibleClearList, msg, level, exclusions) {
+        let b1 = this.board.getOpenCellsBuddies(cell1, true);
+        let b2 = this.board.getOpenCellsBuddies(cell2, true);
+        let clearCells = b1.intersection(b2);
+        return this.clearPossibles(clearCells, possibleClearList, msg, level, exclusions);
+    }
     
     // play back the queue now and actually remove the possibles
     run() {
-        let changeCnt = 0;
+        let changeCnt = 0, changeTotal = 0;
         let lastMsg, lastDisplayedMsg;
         for (let {cell, p, msg, level} of this.queue) {
             if (msg && msg !== lastDisplayedMsg) {
@@ -302,12 +310,14 @@ class DeferredQueue {
                 lastDisplayedMsg = msg;
             }
             changeCnt = this.board.clearListOfPossibles([cell], [p], level + 1);
+            changeTotal += changeCnt;
             if (changeCnt && msg && msg !== lastMsg) {
                 this.board.saveSolution(msg);
                 lastMsg = msg;
             }
         }
-        return changeCnt;
+        this.clear();
+        return changeTotal;
     }
 }
 
@@ -1975,8 +1985,8 @@ class Board {
     }
     
     processAlignedPairExclusions() {
-        this.log("processing alignedPairExclusions");
-        let pCnt = 0;
+        this.log("processAlignedPairExclusions");
+        let queue = new DeferredQueue(this);
         
         // There is not a lot written about what are good candidates for this.  I will start by assuming that
         // we are looking for two cells within the same tile, aligned by row or column that have 3 or more possibles
@@ -2061,25 +2071,23 @@ class Board {
                     }
                 }
                 if (removes.length) {
-                    let output = `found aligned pair exclusion for possibles ${removes.join(",")} in cell ${pairCell.xy()} in pair ${cellsToStr(pair)}`;
-                    this.log(output);
-                    this.saveSolution(output);
-                    return this.clearListOfPossibles([pairCell], removes, 1);
+                    let msg = `found aligned pair exclusion for possibles ${removes.join(",")} in cell ${pairCell.xy()} in pair ${cellsToStr(pair)}`;
+                    this.log(msg);
+                    queue.clearPossibles([pairCell], removes, msg, 1);
                 }
-                return 0;
             }
             
-            pCnt += check.call(this, pair1, 0);
-            pCnt += check.call(this, pair2, 1);
+            check.call(this, pair1, 0);
+            check.call(this, pair2, 1);
         }
         
-        return pCnt;
+        return queue.run();
     }
     
     // Reference: http://www.sudokuwiki.org/XYZ_Wing
     processXYZWing() {
-        this.log("processing XYZWing");
-        let pCnt = 0;
+        this.log("processXYZWing");
+        let queue = new DeferredQueue(this);
         
         this.iterateOpenCells((cell, row, col) => {
             // look for possible hinge cell that has 3 possible values
@@ -2111,13 +2119,13 @@ class Board {
                         let sharedBuddies = buddies.intersection(this.getOpenCellsBuddies(c1)).intersection(this.getOpenCellsBuddies(c2));
                         let msg = `found XYZWing with hinge cell ${cell.xy()} and leafs ${cellsToStr(combo)}, removing possible ${commonPossible.getFirst()}`
                         this.log(msg);
-                        pCnt += this.clearListOfPossiblesMsg(sharedBuddies, commonPossible, msg, 1);
+                        queue.clearPossibles(sharedBuddies, commonPossible, msg, 1);
                     }
                 }
             }
         });
         
-        return pCnt;
+        return queue.run();
     }
     
     // returns an array indexed by possible value (1-9) index
@@ -2132,8 +2140,8 @@ class Board {
     }
     
     processXChains() {
-        this.log("processing X Chains");
-        let pCnt = 0;
+        this.log("processXChains");
+        let queue = new DeferredQueue(this);
         
         // identify potential starting cells
         // follow strong, then weak links until we get overlap between ends of the chain
@@ -2220,9 +2228,7 @@ class Board {
                                 });
                                 let msg = ` found xchain Rule 2 violation between ${cellsToStr([c1, c2])}, able to remove possible ${p} from ${cellsToStr(removes)}`;
                                 this.log(msg);
-                                pCnt += this.clearListOfPossiblesMsg(removes, [p], msg, 1);
-                                // have to return here because lots of things may have changed when we cleared that possible
-                                return pCnt;                                
+                                queue.clearPossibles(removes, [p], msg, 1);
                             }
                         }
                     }
@@ -2247,38 +2253,51 @@ class Board {
                         if (accumulateColors.size > 1) {
                             let msg = `  found xchain Rule 4 violation for possible ${p} - cell ${cell.xy()} can see more than one color in chain`;
                             this.log(msg);
-                            pCnt += this.clearListOfPossiblesMsg([cell], [p], msg, 1);
-                            // have to return here because lots of things may have changed when we cleared that possible
-                            return pCnt;
+                            queue.clearPossibles([cell], [p], msg, 1);
                         }
                     }
                 }
             }
-            
         }
         
-        return pCnt;
+        return queue.run();
     }
-    
+
     processXYChains() {
-        let pCnt = 0;
         this.log("processXYChains");
+        let queue = new DeferredQueue(this);
         
         let data = new PairLinkData(this);
         let chainList = data.makeXYChains();
-        let queue = [];
         for (let chain of chainList) {
             let c1 = chain.first().cell;
             let c2 = chain.last().cell;
             let p = chain.last().pLinkOther;
             let msg = ` xy chain, possible ${p}, chain ending ${c1.xy()} ${c1.possibles.toBracketString()}, ${c2.xy()} ${c2.possibles.toBracketString()}, eliminate cells that can see both ends, chain: ${chain.cellsToStr()}`;
             this.log(msg);
-            this.queueOverlappingPossibles(queue, c1, c2, p, msg, 2, chain.getCells());
+            queue.clearOverlappingPossibles(c1, c2, [p], msg, 2, chain.getCells());
         }
-        // now process all the queued removals
-        pCnt += this.clearQueue(queue);
-        return pCnt;
+        return queue.run();
+    }    
+
+/*    
+    processXYChains() {
+        this.log("processXYChains");
+        let queue = new DeferredQueue(this);
+        
+        let data = new PairLinkData(this);
+        let chainList = data.makeXYChains();
+        for (let chain of chainList) {
+            let c1 = chain.first().cell;
+            let c2 = chain.last().cell;
+            let p = chain.last().pLinkOther;
+            let msg = ` xy chain, possible ${p}, chain ending ${c1.xy()} ${c1.possibles.toBracketString()}, ${c2.xy()} ${c2.possibles.toBracketString()}, eliminate cells that can see both ends, chain: ${chain.cellsToStr()}`;
+            this.log(msg);
+            queue.clearOverlappingPossibles(c1, c2, [p], msg, 2, chain.getCells());
+        }
+        return queue.run();
     }
+*/
     
     clearOverlappingPossibles(c1, c2, p, msg, indent, excludes) {
         let b1 = this.getOpenCellsBuddies(c1, true);

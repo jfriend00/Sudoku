@@ -130,12 +130,11 @@ class Cell {
     calcPossiblesHash() {
         // set has to be sorted to make predictable hash
         let items = Array.from(this.possibles).sort((a,b) => { return a - b});
-        let total = 0;
-        
-        items.forEach((num, index) => {
+
+        for (let [num, index] of items.entries()) {
             let multiplier = Math.pow(boardSize + 1, index);
             total += num * multiplier;
-        });
+        }
         return total;
     }    
     
@@ -2674,13 +2673,13 @@ class Board {
             "processPointingPairsTriples",
             "processBlockRowCol",
             "processHiddenSubset",
+            "processFish",
+            "processXWing",
             "processXYChains",
             "processAlternatingChains",
             "processXChains",
             "processAlignedPairExclusions",
             "processRectangles",
-            "processFish",
-            "processXWing",
             "processXYWing",
             "processXYZWing",
             "processXWingFinned",

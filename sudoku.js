@@ -1280,15 +1280,16 @@ class Board {
     // When a given value can only be in two particular same spots in each of two particular rows or columns
     // then it must be in one of the other for each and no other cells in the common rows or columns 
     // can be either of the two values
-    processXwing() {
+    processXWing() {
         // So you're looking for a value that can only occur in two spots in a row or column
         // And, there's another of the same type of row or column that the same two values can also only
         // occur in those same two spots
         // When that is the case, you can eliminate those two values from all the other possibles
         // Note: we're getting a full structure (not just open cells) so that the index into the cells
         //   array will be a column number so it can be compare to other rows and columns
+        this.log("processing xwing");
         
-        let possiblesCleared = 0;
+        let queue = new DeferredQueue(this);
         
         // accumulate row and column key strings into the candidates structure
         // so future rows/cols in the iteration can find matches with them
@@ -1327,7 +1328,7 @@ class Board {
             // The key is the index in the map.  The value in the map is the typeNum (row or column number)
             // So, if we're iterating rows, the typeNum is the row number and the key contains 
             // the possible value and the two columns numbers that contain that possible value
-            pMap.forEach((set, digit) => {
+            for (let [digit, set] of pMap.entries()) {
                 // only pay attention to the possible value that are only contained in two cells in this row/col
                 if (set.size === 2) {
                     // Make a combined key out of value + pos1 + pos2 so you can see
@@ -1351,10 +1352,10 @@ class Board {
                         if (type !== "row") {
 							[rows, columns] = [columns, rows];
                         }
-                        let output = `found x-wing pattern by ${type}: value=${digit} ` +
+                        let msg = `found xwing pattern by ${type}: value=${digit} ` +
                             `${this.getCell(rows[0], columns[0]).xy()}, ${this.getCell(rows[0], columns[1]).xy()}, ` + 
                             `${this.getCell(rows[1], columns[0]).xy()}, ${this.getCell(rows[1], columns[1]).xy()}`;
-                        this.log(output);
+                        this.log(msg);
                             
                         let getFnName;
                         if (type === "row") {
@@ -1364,35 +1365,18 @@ class Board {
                         }
                         let position1 = candidates[type].get(key);
                         let position2 = typeNum;
-                        let origPossiblesCleared = possiblesCleared;
-                        set.forEach(x => {
+                        for (let x of set) {
                             let cells = this[getFnName](x);
-                            cells.forEach((cell, index) => {
-                                // if this cell is not our actual x-wing match, then clear the two
-                                // target possible values from these
-                                if (index !== position1 && index !== position2) {
-                                    // debug code, next three lines
-                                    if (cell.possibles.has(digit)) {
-                                        this.log(`Removing possible ${digit} from ${cell.xy()}`, cell.possibles);
-                                    }
-                                    if (!cell.value && cell.possibles.delete(digit)) {
-                                        ++possiblesCleared;
-                                    }
-                                }
-                            });
-                        });
-                        if (possiblesCleared !== origPossiblesCleared) {
-                            this.saveSolution(output);
+                            queue.clearPossibles(cells, [digit], msg, 1, [cells[position1], cells[position2]]);
                         }
-                        // 
                     } else {
                         candidates[type].set(key, typeNum);
                     }
                 }
-            });
+            }
         });
         
-        return possiblesCleared;
+        return queue.run();
     }
     
     // Good description of Finned X-Wing: http://www.sudokuwiki.org/Finned_X_Wing
@@ -1402,7 +1386,8 @@ class Board {
     //    normal X-Wing rule (no other matching possibles in the row/col)
     // Fins can be in the same tile as an x-wing node.  Can only have one set of fins.
     processXWingFinned() {
-        let possiblesCleared = 0;
+        this.log("processXWingFinned");
+        let queue = new DeferredQueue(this);
 
         function run(dir) {
             
@@ -1438,7 +1423,7 @@ class Board {
                         let match = cleanCandidates.get(cleanIndexStr);
                         if (match) {
                             let xwingCells = match.union(set);
-                            this.log(`!!found normal X-Wing for possible ${p} by ${dir}, cells: ${Cell.outputCellList(xwingCells)}`);
+                            this.log(`!!found normal XWing for possible ${p} by ${dir}, cells: ${Cell.outputCellList(xwingCells)}`);
                         } else {
                             cleanCandidates.set(cleanIndexStr, set);
                             let tilepos0 = Cell.calcTilePosition(dir, pair[0].tileNum);
@@ -1560,15 +1545,13 @@ class Board {
                                 }
                             }
                             if (isFinnedMatch) {
-                                let output = `found finned X-Wing: ${dir}, possible ${finItem.p}, finCells: ${Cell.outputCellList(finItem.fin)}, single: ${finItem.cell.xy()}, other pair: ${Cell.outputCellList(clean.set)}`;
-                                this.log(output)
+                                let msg = `found finned XWing: ${dir}, possible ${finItem.p}, finCells: ${Cell.outputCellList(finItem.fin)}, single: ${finItem.cell.xy()}, other pair: ${Cell.outputCellList(clean.set)}`;
+                                this.log(msg)
                                 // the possibles we can clear are the ones that are in the fin corner column and buddies with the fin
                                 // since the fin must be in the same tile as the corner, this means that we're to clear possibles from
                                 // the fine tile that have the same column or row as the corner
                                 // clean.finMatchColumn is the column we want to be clearing from
                                 // we can get the tileNum from any cell in the fin
-                                
-                                let origPossiblesCleared = possiblesCleared;
                                 
                                 if (finItem.fin.size > 1) {
                                     // clear possible finItem.p that are in finItem.finTileNum and in clean.finMatchColumn
@@ -1578,7 +1561,7 @@ class Board {
                                     }));
                                     cells.remove(finItem.fin);
                                     cells.remove(clean.set);
-                                    possiblesCleared += this.clearListOfPossibles(cells, [finItem.p], 1)
+                                    queue.clearPossibles(cells, [finItem.p], msg, 1);
                                 } else {
                                     // http://hodoku.sourceforge.net/en/tech_sdp.php shows how a single fin cell can clear more
                                     // than the above case.  
@@ -1592,15 +1575,8 @@ class Board {
                                     let finBuddies = this.getOpenCellsBuddies(finCell, true);
                                     let cleanBuddies = this.getOpenCellsBuddies(cleanCell, true);
                                     let cellsToClear = finBuddies.intersection(cleanBuddies);
-                                    cellsToClear.delete(finCell);
-                                    cellsToClear.delete(cleanCell);
-                                    possiblesCleared += this.clearListOfPossibles(cellsToClear, [finItem.p], 1);
+                                    queue.clearPossibles(cellsToClear, [finItem.p], msg, 1, [finCell, cleanCell]);
                                 }
-                                
-                                if (possiblesCleared !== origPossiblesCleared) {
-                                    this.saveSolution(output);
-                                }
-                                
                             }
                         }
                     }
@@ -1611,7 +1587,7 @@ class Board {
         // analyze both rows and columns
         run.call(this, "row");
         run.call(this, "column");
-        return possiblesCleared;
+        return queue.run();
     }
 
     // swordfish (3 rows covering 3 columns) and jellyfish (4 rows covering 4 columns)
@@ -2810,18 +2786,33 @@ class Board {
             "processPointingPairsTriples",
             "processBlockRowCol",
             "processHiddenSubset",
+            // insert any options.runFirst method here
             "processXYChains",
             "processAlternatingChains",
             "processXChains",
             "processAlignedPairExclusions",
             "processRectangles",
             "processFish",
-            "processXwing",
+            "processXWing",
             "processXYWing",
             "processXYZWing",
             "processXWingFinned",
 //            "processXCyles"
         ];
+        
+        if (options.runFirst) {
+            let i = processMethods.indexOf(options.runFirst);
+            if (i !== -1) {
+                // remove it
+                processMethods.splice(i, 1);
+                // then add it back as the first main method
+                i = processMethods.indexOf("processXYChains");
+                if (1 !== -1) {
+                    processMethods.splice(i, 0, options.runFirst);
+                }
+            }
+            
+        }
 
         let openCells;
         try {
@@ -2892,6 +2883,7 @@ function runBoard(boardStr, name, options = {}) {
 
 // node sudoku.js [-noguess] [-x=processAlignedPairExclusions] boardName
 // node sudoku.js [-noguess] [-x=processAlignedPairExclusions] boardString
+// node sudoku.js [-noguess] [-r=processXWing] boardString
 function processArgs() {
     let options = {skipMethods: []};
     let args = process.argv.slice(2);
@@ -2899,6 +2891,8 @@ function processArgs() {
         if (arg.charAt(0) === "-") {
             if (arg.startsWith("-x=")) {
                 options.skipMethods.push(arg.slice(3));
+            } else if (arg.startsWith("-r=")) {
+                options.runFirst = arg.slice(3);
             } else {
                 switch(arg) {
                     case "-noguess":

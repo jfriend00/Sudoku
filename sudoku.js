@@ -131,9 +131,10 @@ class Cell {
         // set has to be sorted to make predictable hash
         let items = Array.from(this.possibles).sort((a,b) => { return a - b});
 
-        for (let [num, index] of items.entries()) {
+        let total = 0;
+        for (let [index, p] of items.entries()) {
             let multiplier = Math.pow(boardSize + 1, index);
-            total += num * multiplier;
+            total += p * multiplier;
         }
         return total;
     }    
@@ -393,7 +394,7 @@ class Board {
             let possibleVals = new SpecialSet();
             
             // collect all assignedVals and possibleVals
-            cells.forEach(cell => {
+            for (let cell of cells) {
                 if (cell.value) {
                     // check if this assigned value already used
                     if (assignedVals.has(cell.value)) {
@@ -413,7 +414,7 @@ class Board {
                         error(cell, `cell has no possibles and no assigned value`);
                     }
                 }
-            });
+            }
             // check for possibles and assigned values overlapping
             let overlapVals = assignedVals.intersection(possibleVals);
             if (overlapVals.size > 0) {
@@ -759,20 +760,20 @@ class Board {
         let opts = options || {};
         // collect all affected cells in a Set (so no cell is repeated)
         let list = this.getCellsRowSet(row);
-        this.getCellsColumn(col).forEach(cell => list.add(cell));
-        this.getCellsTile(this.getTileNum(row, col)).forEach(cell => list.add(cell));
+        list.addTo(this.getCellsColumn(col));
+        list.addTo(this.getCellsTile(this.getTileNum(row, col)));
         
         // if we only want open cells, then remove ones that have a value
         if (opts.openOnly) {
-            list.forEach(cell => {
+            for (let cell of list) {
                 if (cell.value) {
                     list.delete(cell);
                 }
-            });
+            }
         }
         
         if (opts.excludes) {
-            opts.excludes.forEach(item => list.delete(item));
+            list.remove(opts.excludes);
         }
         return list;
     }
@@ -852,16 +853,16 @@ class Board {
         
         let waitingCells = [];
         let cells = this.getAffectedCells(cell.row, cell.col, {openOnly: true});
-        cells.forEach(c => {
+        for (let c of cells) {
             c.clearPossibleValue(val, level)
             if (c.possibles.size === 1) {
                 // keep track of cells we need to set
                 waitingCells.push(c);
             }
-        });
+        }
         // now that we're done with our work, deal with the dirty cells 
         // that each have only a single possible value
-        waitingCells.forEach(c => {
+        for (let c of waitingCells) {
             // note: This is recursive, so we have to protect against the fact that
             // this cell might have already been set by the recursive behavior
             if (!c.value) {
@@ -870,7 +871,7 @@ class Board {
                 }
                 totalCellsSet += this.setValue(c, c.possibles.getFirst(), level + 1);
             }
-        });
+        }
         return totalCellsSet;        
     }
     
@@ -883,23 +884,23 @@ class Board {
         let waitingCells = [];
         let totalCellsSet = 0;
         
-        cells.forEach(c => {
-            possibleClearList.forEach(p => {
+        for (let c of cells) {
+            for (let p of possibleClearList) {
                 totalCellsSet += c.clearPossibleValue(p, level);
-            });
+            }
             if (c.possibles.size === 1) {
                 waitingCells.push(c);
             }
-        });
+        }
         // now that we're done with our work, deal with the dirty cells 
         // that each have only a single possible value
-        waitingCells.forEach(c => {
+        for (let c of waitingCells) {
             // note: This is recursive, so we have to protect against the fact that
             // this cell might have already been set by the recursive behavior
             if (!c.value) {
                 totalCellsSet += this.setValue(c, c.possibles.getFirst(), level + 1);
             }
-        });
+        }
         return totalCellsSet;
     }
     
@@ -1008,13 +1009,13 @@ class Board {
                     // will get called three times (row/col/tile) with a set of cells, 
                     // home cell has been eliminated from the set
                     let union = new SpecialSet();
-                    cells.forEach(cell => {
+                    for (let cell of cells) {
                         if (cell.value) {
                             union.add(cell.value);
                         } else {
                             union.addTo(cell.possibles);
                         }
-                    });
+                    }
                     // if all values are not accounted for, then that value MUST go in this cell
                     if (union.size !== boardSize) {
                         if (union.size !== (boardSize - 1)) {
@@ -1045,7 +1046,7 @@ class Board {
         this.iterateOpenCellsByStructureAll(cells => {
             // here we have an array of cells to process (will be a row, column or tile)
             let pairs = new Map();
-            cells.forEach(cell => {
+            for (let cell of cells) {
                 if (cell.possibles.size === 2) {
                     let hash = cell.calcPossiblesHash();
                     if (pairs.has(hash)) {
@@ -1063,7 +1064,7 @@ class Board {
                         pairs.set(hash, cell);
                     }
                 }
-            });
+            }
         });
         return possiblesCleared;
     }
@@ -1318,13 +1319,13 @@ class Board {
             
             // for all the cells in the row
             // add each possible to the right set of the pMap
-            cells.forEach((cell, index) => {
+            for (let [index, cell] of cells.entries()) {
                 if (!cell.value) {
                     cell.possibles.forEach(p => {
                         pMap.get(p).add(index);
                     });
                 }
-            });
+            }
             
             // this.log("pMap", pMap);
             // pMap is the same type of pMap in processHiddenSubset()
@@ -1615,21 +1616,21 @@ class Board {
                let pMap = new MapOfSets(boardSize, 1);
                 // iterate these cells, position is the position in the row/col
                 // typeNum is the row or column number
-                cells.forEach((cell, position) => {
+                for (let [position, cell] of cells.entries()) {
                     if (!cell.value) {
                         cell.possibles.forEach(p => {
                             pMap.get(p).add(position);
                         });
                     }
-                });
+                }
                 // Now remove any sets from the map that don't have the right size
                 // The swordfish pattern only wants 2 or 3 cells per row
-                pMap.forEach((set, val) => {
+                for (let [val, set] of pMap.entries()) {
                     if (set.size < 2 || set.size > width) {
                         // remove wrong size items from the map
                         pMap.delete(val);
                     }
-                });            // typeNum is row/col number, so this is assigning a pMap object for that row/col into the array
+                }            // typeNum is row/col number, so this is assigning a pMap object for that row/col into the array
                 candidates[type][typeNum] = pMap;
             });
             
@@ -1652,7 +1653,7 @@ class Board {
             });  
     */
             
-            ["row", "column"].forEach(tag => {
+            for (let tag of ["row", "column"]) {
                 let shortTag = tag === "row" ? "row" : "col";
                 let arr = candidates[tag];
                 
@@ -1698,7 +1699,7 @@ class Board {
                         }
                     }
                 }
-            });
+            }
         }
 
         // look for the larger ones first
@@ -1731,7 +1732,7 @@ class Board {
                 // we need to find two that match the opposite.  
                 // The simplest way to do that is to try all combinations of two
                 let combinations = utils.makeCombinations(candidates, 2);
-                combinations.forEach(arr => {
+                for (let arr of combinations) {
                     // At this point, arr contains two cells that each have one and only one possible
                     // in common with the pivot cell.  We already know that.
                     // Also need to show:
@@ -1780,7 +1781,7 @@ class Board {
                             queue.clearPossibles(cellsToClear, leafIntersect, msg, 1);
                         }
                     }
-                });
+                }
             }
         });
         return queue.run();
@@ -2560,10 +2561,10 @@ class Board {
                 cellData.fill("" + cell.value);
             } else {
                 cellData.fill(" ");
-                cell.possibles.forEach(p => {
+                for (let p of cell.possibles) {
                     foundPossibles = true;
                     cellData[p - 1] = "" + p;
-                });
+                }
             }
             return cellData;
         });

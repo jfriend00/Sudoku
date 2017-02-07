@@ -252,11 +252,23 @@ class DeferredQueue {
         this.queue = [];
     }
 
+    // clear possible
     // meant as an internal method
-    _add(cell, p, msg, level) {
+    _addP(cell, p, msg, level) {
         if (cell.possibles.has(p)) {
             this.board.logLevel(level, `queuing to remove possible ${p} from ${cell.xy()} ${cell.possibles.toBracketString()}`);
-            this.queue.push({cell, p, msg, level});
+            this.queue.push({type: "possible", cell, val: p, msg, level});
+            return 1;
+        }
+        return 0;
+    }
+    
+    // set value
+    // meant as an internal method
+    _addV(cell, val, msg, level) {
+        if (cell.value !== val) {
+            this.board.logLevel(level, `queuing to set value ${val} on ${cell.xy()}`);
+            this.queue.push({type: "value", cell, val, msg, level});
             return 1;
         }
         return 0;
@@ -286,10 +298,14 @@ class DeferredQueue {
         }
         for (let cell of cells) {
             for (let p of possibleClearList) {
-                pCnt += this._add(cell, p, msg, level);
+                pCnt += this._addP(cell, p, msg, level);
             }
         }
         return pCnt;
+    }
+    
+    setValue(cell, val, msg, level) {
+        return this._addV(cell, val, msg, level);
     }
 
     // same as clearPossibles, but it will calculate a set of overlapping cells for you
@@ -302,14 +318,19 @@ class DeferredQueue {
     
     // play back the queue now and actually remove the possibles
     run() {
-        let changeCnt = 0, changeTotal = 0;
+        let changeCnt, changeTotal = 0;
         let lastMsg, lastDisplayedMsg;
-        for (let {cell, p, msg, level} of this.queue) {
+        for (let {type, cell, val, msg, level} of this.queue) {
+            changeCnt = 0;
             if (msg && msg !== lastDisplayedMsg) {
                 this.board.logLevel(level, `processing: ${msg}`);
                 lastDisplayedMsg = msg;
             }
-            changeCnt = this.board.clearListOfPossibles([cell], [p], level + 1);
+            if (type === "possible") {
+                changeCnt = this.board.clearListOfPossibles([cell], [val], level + 1);
+            } else if (type === "value") {
+                changeCnt = this.board.setValue(cell, val, level + 1);
+            }
             changeTotal += changeCnt;
             if (changeCnt && msg && msg !== lastMsg) {
                 this.board.saveSolution(msg);
@@ -2278,75 +2299,6 @@ class Board {
             queue.clearOverlappingPossibles(c1, c2, [p], msg, 2, chain.getCells());
         }
         return queue.run();
-    }    
-
-/*    
-    processXYChains() {
-        this.log("processXYChains");
-        let queue = new DeferredQueue(this);
-        
-        let data = new PairLinkData(this);
-        let chainList = data.makeXYChains();
-        for (let chain of chainList) {
-            let c1 = chain.first().cell;
-            let c2 = chain.last().cell;
-            let p = chain.last().pLinkOther;
-            let msg = ` xy chain, possible ${p}, chain ending ${c1.xy()} ${c1.possibles.toBracketString()}, ${c2.xy()} ${c2.possibles.toBracketString()}, eliminate cells that can see both ends, chain: ${chain.cellsToStr()}`;
-            this.log(msg);
-            queue.clearOverlappingPossibles(c1, c2, [p], msg, 2, chain.getCells());
-        }
-        return queue.run();
-    }
-*/
-    
-    clearOverlappingPossibles(c1, c2, p, msg, indent, excludes) {
-        let b1 = this.getOpenCellsBuddies(c1, true);
-        let b2 = this.getOpenCellsBuddies(c2, true);
-        let clearCells = b1.intersection(b2);
-        if (excludes) {
-            clearCells.remove(excludes);
-        }
-        return this.clearListOfPossiblesMsg(clearCells, [p], msg, indent);
-    }
-    
-    queueOverlappingPossibles(queue, c1, c2, p, msg, indent, excludes) {
-        let origLen = queue.length;
-        let curMsg = msg;
-        let b1 = this.getOpenCellsBuddies(c1, true);
-        let b2 = this.getOpenCellsBuddies(c2, true);
-        let clearCells = b1.intersection(b2);
-        if (excludes) {
-            clearCells.remove(excludes);
-        }
-        for (let cell of clearCells) {
-            if (cell.possibles.has(p)) {
-                let leading = Array(indent + 1).fill(" ").join("");
-                this.log(leading + `queueing to remove possible ${p} from ${cell.xy()} ${cell.possibles.toBracketString()}`);
-                queue.push({cell, p, indent, msg: curMsg});
-                curMsg = null;
-            }
-        }
-        return queue.length - origLen;
-    }
-    
-    clearQueue(queue) {
-        this.log("processing queued removals");
-        let pCnt = 0, changeCnt, checkStop = -1;
-        for (let item of queue) {
-            // temporarily for debugging purposes, only clear the first set of items from the queue
-            if (checkStop == 0) {
-                break;
-            }
-            if (item.msg) {
-                --checkStop;
-            }
-            changeCnt = this.clearListOfPossibles([item.cell], [item.p], item.indent);
-            if (changeCnt && item.msg) {
-                this.saveSolution(item.msg);
-            }
-            pCnt += changeCnt;
-        }
-        return pCnt;
     }
     
     // Source: http://www.sudokuwiki.org/X_Cycles and http://www.sudokuwiki.org/X_Cycles_Part_2
@@ -2363,8 +2315,8 @@ class Board {
     
     
     processAlternatingChains() {
-        let pCnt = 0;
         this.log("processAlternatingChains");
+        let queue = new DeferredQueue(this);
         let links = this.calcLinks();
         let allChains = links.makeAlternatingChains();
         
@@ -2393,24 +2345,20 @@ class Board {
                     // apply nice loops rule 2 - two strong links together force the apex to have the value
                     let msg = ` found alternating chain loop with two strong links, setting value of ${cell.xy()} to ${p}, ${altChain.cellsToStr()}`;
                     this.log(msg);
-                    this.saveSolution(msg);
-                    pCnt += this.setValue(cell, p, 2);
-                    return pCnt;
-                } 
-                // do Nice Loops 1 eliminations
-                // Find each weak link
-                let weaks = altChain.getWeakLinks();
-                let msg = ` found alternating chain loop for possible ${p} ${altChain.cellsToStr()}`;
-                this.log(msg);
-                let clearCells = new SpecialSet();
-                for (let item of weaks) {
-                    let b1 = this.getOpenCellsBuddies(item[0], true);
-                    let b2 = this.getOpenCellsBuddies(item[1], true);
-                    clearCells.addTo(b1.intersection(b2));
-                }
-                pCnt += this.clearListOfPossiblesMsg(clearCells, [p], msg, 2);
-                if (pCnt !== 0) {
-                    return pCnt;
+                    queue.setValue(cell, p, msg, 2);
+                } else {
+                    // do Nice Loops 1 eliminations
+                    // Find each weak link
+                    let weaks = altChain.getWeakLinks();
+                    let msg = ` found alternating chain loop for possible ${p} ${altChain.cellsToStr()}`;
+                    this.log(msg);
+                    let clearCells = new SpecialSet();
+                    for (let item of weaks) {
+                        let b1 = this.getOpenCellsBuddies(item[0], true);
+                        let b2 = this.getOpenCellsBuddies(item[1], true);
+                        clearCells.addTo(b1.intersection(b2));
+                    }
+                    queue.clearPossibles(clearCells, [p], msg, 2);
                 }
             }
             for (let altChain of nonCircularChains) {
@@ -2418,13 +2366,10 @@ class Board {
                 let [s1, s2] = altChain.getStrongEndCells();
                 let msg = ` found alternating open chain for possible ${p}, eliminating cells that can see both ends ${altChain.cellsToStr()}`;
                 this.log(msg);
-                pCnt += this.clearOverlappingPossibles(s1, s2, p, msg, 2);
-                if (pCnt !== 0) {
-                    return pCnt;
-                }
+                queue.clearOverlappingPossibles(s1, s2, [p], msg, 2);
             }
         }
-        return pCnt;
+        return queue.run();
     }
     
     processXCyles() {
@@ -2609,7 +2554,7 @@ class Board {
     // num is the row number, column number or tile number
     // val is the possible value to clear
     // exceptions is a set of indexes or cells not to touch
-    clearPossibles(type, num, val, exceptions) {
+    clearPossibles2(type, num, val, exceptions) {
         let cnt = 0;
         
         // build iteration function name

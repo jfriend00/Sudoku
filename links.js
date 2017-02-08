@@ -218,7 +218,7 @@ class LinkSet extends SpecialSet {
         for (let set of iterable) {
             this.add(set);
         }
-        return thisl;
+        return this;
     }
     
     has(set) {

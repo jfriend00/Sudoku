@@ -866,9 +866,6 @@ class Board {
             // note: This is recursive, so we have to protect against the fact that
             // this cell might have already been set by the recursive behavior
             if (!c.value) {
-                if (!c.possibles.getFirst()) {
-                    let i = 1;    // place to put a breakpoint
-                }
                 totalCellsSet += this.setValue(c, c.possibles.getFirst(), level + 1);
             }
         }
@@ -1190,7 +1187,7 @@ class Board {
             // get map of possibles in this list of cells
             if (cells.length < 3) return;
             let pMap = this.getPossibleMap(cells);
-            for (let [p, set] of pMap) {
+            for (let set of pMap.values()) {
                 // if there are more than 4 cells this value is in, it can't be a key value in a pair, triple or quad
                 if (set.size < 2 || set.size > 4) return;
                 // make a set of open cells not in the original set to be considered for triples or quads
@@ -2208,7 +2205,7 @@ class Board {
             // Rule 2 (from http://www.sudokuwiki.org/Singles_Chains) says that if there is more than one cell from the same chain
             // with the same color in any unit (row/col/tile), then all cells with that color in that unit must be off
             
-            for (let [i, chainObj] of pChains.entries()) {
+            for (let chainObj of pChains) {
                 // separate color map for each chain
                 let colorMap = chainObj.colorMap;
                 let colorSet = new SpecialSet(colorMap.keys());
@@ -2241,15 +2238,11 @@ class Board {
                 let otherCells = allCells.difference(colorMap);
                 for (let cell of otherCells) {
                     // temporary debugging
-                    let buds = this.getOpenCellsBuddies(cell, true);
                     let overlap = this.getOpenCellsBuddies(cell, true).intersection(colorSet);
                     if (overlap.size >= 2) {
                         let accumulateColors = new SpecialSet();
                         for (let o of overlap) {
                             accumulateColors.add(colorMap.get(o));
-                        }
-                        if (p === 5 && cell.row === 4 && cell.col === 2) {
-                            let i = 1;   // set breakpoint here
                         }
                         if (accumulateColors.size > 1) {
                             let msg = `  found xchain Rule 4 violation for possible ${p} - cell ${cell.xy()} can see more than one color in chain`;
@@ -2676,12 +2669,12 @@ class Board {
             "processHiddenSubset",
             "processFish",
             "processXWing",
+            "processXYWing",
             "processXYChains",
             "processAlternatingChains",
             "processXChains",
             "processAlignedPairExclusions",
             "processRectangles",
-            "processXYWing",
             "processXYZWing",
             "processXWingFinned",
 //            "processXCyles"
@@ -2821,7 +2814,7 @@ function run() {
     } else {
         // no puzzle specified, run all the puzzles
         let boardNames = Object.keys(patterns);
-        for (name of boardNames) {
+        for (let name of boardNames) {
             console.log("-----------------------------------------------------------------------------------------------------------------");
                 let numOpenCells = runBoard(patterns[name], name, options);
                 if (numOpenCells) {

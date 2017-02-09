@@ -3,6 +3,47 @@ const {cellsToStr, makeCombinations} = require('./utils.js');
 const boardSize = 9;
 
 
+// returns a map of sets that tells you which cells each possible value is in
+// The map is indexed by possible value
+//     The value in the map for each possible is a set of cells
+function getPossibleMap(cells) {
+    let pMap = new SpecialMap();
+    for (let cell of cells) {
+        for (let p of cell.possibles) {
+            // lookup the possible value in the pMap for this tile and add this cell to it
+            let set = pMap.get(p);
+            if (!set) {
+                set = new SpecialSet();
+                pMap.set(p, set);
+            }
+            set.add(cell);
+        }
+    }
+    return pMap;
+}
+    
+function canSeeEachOther(set1, set2) {
+    let unionTile = new SpecialSet();
+    let unionRow = new SpecialSet();
+    let unionCol = new SpecialSet();
+    // accumulate all rows, cols, tileNums used by set1
+    for (let cell of set1) {
+        unionTile.add(cell.tileNum);
+        unionRow.add(cell.row);
+        unionCol.add(cell.col);
+    }
+    // now see if anything in set2 intersects with that
+    for (let cell of set2) {
+        if (unionTile.has(cell.tileNum) ||
+            unionRow.has(cell.row) ||
+            unionCol.has(cell.col)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+
 // array of AltChain objects
 class AltChainList extends Array {
     constructor(...args) {
@@ -429,7 +470,7 @@ class AllLinkData {
             };
         }
         board.iterateCellsByStructureAll((cells, tag, num) => {
-            let pMap = board.getPossibleMap(cells);
+            let pMap = getPossibleMap(cells);
             for (let [p, set] of pMap) {
                 // only need to collect allCells once in one orientation
                 if (tag === "row") {
@@ -779,4 +820,4 @@ class PairLinkData {
     }
 }
 
-module.exports = {LinkData, AllLinkData, PairLinkData};
+module.exports = {LinkData, AllLinkData, PairLinkData, LinkSet, getPossibleMap, canSeeEachOther};

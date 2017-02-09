@@ -1,3 +1,9 @@
+// check if something is an iterable
+function isIterable(obj) {
+    if (!obj) return false;
+    return typeof obj[Symbol.iterator] === "function";
+}
+
 class SpecialSet extends Set {
     constructor(arg) {
         super(arg);
@@ -16,11 +22,18 @@ class SpecialSet extends Set {
    
 // methods that modify this set all start with "addXX" or "removeXX"
 
-    // iterate through the pass iterable and all all those items to this set
-    // it's like .union(), but modifies the current set
+    // Iterate through the passed iterable and all all those items to this set
+    //    it's like .union(), but modifies the current set
+    // For ease of coding, if the argument is not an iterable, then it will
+    //    just call .add(arg) and add that item to the set
+    // If you want to add an iterable to the set, then just call .add() directly
     addTo(iterable) {
-        for (let item of iterable) {
-            this.add(item);
+        if (isIterable(iterable)) {
+            for (let item of iterable) {
+                this.add(item);
+            }
+        } else {
+            this.add(iterable);
         }
         return this;
     }
@@ -284,4 +297,4 @@ class ArrayOfSets extends Array {
 
 
 
-module.exports = {SpecialSet, SpecialMap, MapOfArrays, MapOfSets, MapOfMaps, ArrayOfSets};
+module.exports = {SpecialSet, SpecialMap, MapOfArrays, MapOfSets, MapOfMaps, ArrayOfSets, isIterable};

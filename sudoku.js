@@ -4,7 +4,8 @@ const sudokuPatternInfo = require('./sudoku-patterns.js');
 const patterns = sudokuPatternInfo.patterns;
 const unsolved = sudokuPatternInfo.unsolved;
 const {SpecialSet, SpecialMap, MapOfArrays, MapOfSets, MapOfMaps, ArrayOfSets} = require('./specialset.js');    
-const {LinkData, AllLinkData, PairLinkData} = require('./links.js');
+const {LinkData, AllLinkData, PairLinkData, getPossibleMap} = require('./links.js');
+const {AlmostLockedSets} = require('./almost-locked-sets.js');
 
 
 // Another source of hard puzzles and knowledge: http://sudoku.ironmonger.com/home/home.tpl?board=094002160126300500000169040481006005062010480900400010240690050019005030058700920
@@ -439,6 +440,24 @@ class Board {
         return openCells.size;
     }
     
+    // return whether two cells can "see" each other
+    doTheyShareVisibility(c1, c2) {
+        let buddies = this.getOpenCellsBuddies(c1, true);
+        return buddies.has(c2);
+    }
+    
+    // return whether a cell can "see" each cell in the other set
+    doTheyShareVisibilitySet(c1, set) {
+        let buddies = this.getOpenCellsBuddies(c1, true);
+        for (let cell of set) {
+            if (!buddies.has(cell)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    
     // iterates a row and calls the callback once for each cell in the row
     // it passes the callback the cell and the index within the row
     iterateRow(row, fn) {
@@ -618,6 +637,18 @@ class Board {
         } else {
             return buddies.toArray();
         }
+    }
+    
+    // get the intersection of the buddies of all these cells
+    // return a set
+    getCommonOpenBuddies(cells) {
+        if (!cells.length) return new SpecialSet();
+        
+        let buds = this.getOpenCellsBuddies(cells[0], true);
+        for (let i = 1; i < cells.length; i++) {
+            buds = buds.intersection(this.getOpenCellsBuddies(cells[i]), true);
+        }
+        return buds;
     }
     
     getCellsBuddies(row, col, returnSet) {
@@ -910,25 +941,6 @@ class Board {
         return cnt;
     }
     
-    // returns a map of sets that tells you which cells each possible value is in
-    // The map is indexed by possible value
-    //     The value in the map for each possible is a set of cells
-    getPossibleMap(cells) {
-        let pMap = new SpecialMap();
-        for (let cell of cells) {
-            for (let p of cell.possibles) {
-                // lookup the possible value in the pMap for this tile and add this cell to it
-                let set = pMap.get(p);
-                if (!set) {
-                    set = new SpecialSet();
-                    pMap.set(p, set);
-                }
-                set.add(cell);
-            }
-        }
-        return pMap;
-    }
-    
     // gets a map of cells by tile where the tileNum is the index
     // and a set of cells is the value for each tile that has a cell present
     // using this, you can figure out how the cells are distributed across tiles
@@ -1101,7 +1113,7 @@ class Board {
         let queue = new DeferredQueue(this);
         
         this.iterateCellsByStructureAll("skipTile", (cells, dir, dirNum) => {
-            let pMap = this.getPossibleMap(cells);
+            let pMap = getPossibleMap(cells);
             for (let [p, set] of pMap) {
                 if (set.size === 2 || set.size === 3) {
                     // see if the whole set of cells is in the same tile
@@ -1132,7 +1144,7 @@ class Board {
         // see which of those are only one row number and/or column number
         for (let tileNum = 0; tileNum < boardSize; tileNum++) {
             let cells = this.getOpenCellsTile(tileNum);
-            let pMap = this.getPossibleMap(cells);
+            let pMap = getPossibleMap(cells);
             // at this point, we know which cells each possible is present in
             // let's find the ones that are in two or three cells and look at them further
             // Use ES6 iteration so we can return out of the whole thing
@@ -1186,7 +1198,7 @@ class Board {
         this.iterateOpenCellsByStructureAll((cells, type, typeNum) => {
             // get map of possibles in this list of cells
             if (cells.length < 3) return;
-            let pMap = this.getPossibleMap(cells);
+            let pMap = getPossibleMap(cells);
             for (let set of pMap.values()) {
                 // if there are more than 4 cells this value is in, it can't be a key value in a pair, triple or quad
                 if (set.size < 2 || set.size > 4) return;
@@ -1419,7 +1431,7 @@ class Board {
                 if (cells.length < 2) return;
                 
                 // get map of which possibles are in which cells
-                let pMap = this.getPossibleMap(cells);
+                let pMap = getPossibleMap(cells);
                 for (let [p, set] of pMap) {
                     // if there are exactly two in this row/col, then this is a clean candidate for an x-wing
                     // lets remember it in the cleanCandidates
@@ -2360,7 +2372,7 @@ class Board {
             }
             
             // find out which possible values only exist in two cells in this unit
-            let pMap = this.getPossibleMap(cells);
+            let pMap = getPossibleMap(cells);
             for (let [p, set] of pMap) {
                 if (set.size === 2) {
                     // create a unique string key
@@ -2632,6 +2644,11 @@ class Board {
         }
     }
     
+    processAlmostLockedSets() {
+        let als = new AlmostLockedSets(this);
+        als.diagnose();
+    }
+    
     // a do-nothing process function
     processPlaceHolder() {
         return 0;
@@ -2664,6 +2681,7 @@ class Board {
             "processNakedTriplesQuads",
             // insert any options.runFirst method here
             "processPlaceHolder",
+            "processAlmostLockedSets",
             "processPointingPairsTriples",
             "processBlockRowCol",
             "processHiddenSubset",

@@ -1,3 +1,5 @@
+"use strict";
+
 // check if something is an iterable
 function isIterable(obj) {
     if (!obj) return false;
@@ -203,6 +205,7 @@ class SpecialSet extends Set {
         return newSet;
     }    
     
+   
     // return a copy of the current set
     clone() {
         return new SpecialSet(this);

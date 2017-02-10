@@ -1,3 +1,5 @@
+"use strict";
+
 const {SpecialSet, SpecialMap, MapOfArrays, MapOfSets, MapOfMaps, ArrayOfSets} = require('./specialset.js');    
 const {cellsToStr, makeCombinations} = require('./utils.js');
 const boardSize = 9;
@@ -23,20 +25,13 @@ function getPossibleMap(cells) {
 }
     
 function canSeeEachOther(set1, set2) {
-    let unionTile = new SpecialSet();
-    let unionRow = new SpecialSet();
-    let unionCol = new SpecialSet();
-    // accumulate all rows, cols, tileNums used by set1
-    for (let cell of set1) {
-        unionTile.add(cell.tileNum);
-        unionRow.add(cell.row);
-        unionCol.add(cell.col);
-    }
+    let unionTile = SpecialSet.unionFromProp("tileNum", set1);
+    let unionRow = SpecialSet.unionFromProp("row", set1);
+    let unionCol = SpecialSet.unionFromProp("col", set1);
+    
     // now see if anything in set2 intersects with that
     for (let cell of set2) {
-        if (unionTile.has(cell.tileNum) ||
-            unionRow.has(cell.row) ||
-            unionCol.has(cell.col)) {
+        if (unionTile.has(cell.tileNum) || unionRow.has(cell.row) || unionCol.has(cell.col)) {
             return true;
         }
     }

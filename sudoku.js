@@ -1,3 +1,5 @@
+"use strict";
+
 const utils = require('./utils.js');
 const cellsToStr = utils.cellsToStr;
 const sudokuPatternInfo = require('./sudoku-patterns.js');
@@ -225,11 +227,12 @@ class BoardError extends Error {
 }
 
 class DeferredQueue {
-    constructor(board) {
+    constructor(board, processMsg) {
         if (!(board instanceof Board)) {
             throw new Error("Must pass board to DeferredQueue() constructor");
         }
         this.board = board;
+        this.processMsg = processMsg;
         this.queue = [];
     }
 
@@ -299,6 +302,9 @@ class DeferredQueue {
     
     // play back the queue now and actually remove the possibles
     run() {
+        if (this.processMsg && this.queue.length) {
+            this.board.log(this.processMsg);
+        }
         let changeCnt, changeTotal = 0;
         let lastMsg, lastDisplayedMsg;
         for (let {type, cell, val, msg, level} of this.queue) {
@@ -328,6 +334,9 @@ class Board {
         this.data = [];
         this.loggingEnabled = true;
 		this.solutions = [];
+        this.buddyCache = new Map();
+        this.buddyHits = 0;
+        this.buddyMisses = 0;
         if (board) {
             // auto-convert string-formatted sdk Sudoku board format strings into arrays
             if (typeof board === "string") {
@@ -440,21 +449,37 @@ class Board {
         return openCells.size;
     }
     
+    
+    
     // return whether two cells can "see" each other
     doTheyShareVisibility(c1, c2) {
         let buddies = this.getOpenCellsBuddies(c1, true);
         return buddies.has(c2);
     }
     
-    // return whether a cell can "see" each cell in the other set
-    doTheyShareVisibilitySet(c1, set) {
-        let buddies = this.getOpenCellsBuddies(c1, true);
+    // return whether two cells can "see" each other
+    doTheyShareVisibilitySet(cell, set) {
+        let buddies = this.getOpenCellsBuddies(cell, true);
         for (let cell of set) {
             if (!buddies.has(cell)) {
                 return false;
             }
         }
         return true;
+    }
+    
+    // return whether all cells in two sets can see each other
+    getCommonBuddies(set1, set2) {
+        let allCells = set1.union(set2);
+        let commonVisibles;
+        for (let cell of allCells) {
+            if (!commonVisibles) {
+                commonVisibles = this.getOpenCellsBuddies(cell, true);
+            } else {
+                commonVisibles = commonVisibles.intersection(this.getOpenCellsBuddies(cell, true));
+            }
+        }
+        return commonVisibles;
     }
     
     
@@ -626,12 +651,12 @@ class Board {
             row = cell.row;            
             col = cell.col;
         }
-        let buddies = new SpecialSet();
-        buddies.addTo(this.getOpenCellsRow(row));
-        buddies.addTo(this.getOpenCellsColumn(col));
-        buddies.addTo(this.getOpenCellsTile(row, col));
-        // remove passed in cell
-        buddies.delete(this.getCell(row, col));
+        let buddies = this.getCellsBuddies(row, col, true);
+        for (let cell of buddies) {
+            if (cell.value) {
+                buddies.delete(cell);
+            }
+        }
         if (returnSet) {
             return buddies;
         } else {
@@ -651,17 +676,30 @@ class Board {
         return buds;
     }
     
+    // since buddies are always the same, this uses a cache
     getCellsBuddies(row, col, returnSet) {
+        let key = "" + row + ":" + col;
+        let cachedResult = this.buddyCache.get(key);
+        if (cachedResult) {
+            ++this.buddyHits;
+            if (returnSet) {
+                return cachedResult.set.clone();
+            } else {
+                return cachedResult.array.slice();
+            }
+        }
+        ++this.buddyMisses;
         let buddies = new SpecialSet();
         buddies.addTo(this.getCellsRow(row));
         buddies.addTo(this.getCellsColumn(col));
         buddies.addTo(this.getCellsTile(row, col));
         // remove passed in cell
         buddies.delete(this.getCell(row, col));
+        this.buddyCache.set(key, {set: buddies, array: buddies.toArray()});
         if (returnSet) {
-            return buddies;
+            return buddies.clone();
         } else {
-            return buddies.toArray();
+            return buddies.toArray().slice();
         }
     }
     
@@ -1112,7 +1150,7 @@ class Board {
         this.log("processBlockRowCol");
         let queue = new DeferredQueue(this);
         
-        this.iterateCellsByStructureAll("skipTile", (cells, dir, dirNum) => {
+        this.iterateOpenCellsByStructureAll("skipTile", (cells, dir, dirNum) => {
             let pMap = getPossibleMap(cells);
             for (let [p, set] of pMap) {
                 if (set.size === 2 || set.size === 3) {
@@ -2645,8 +2683,11 @@ class Board {
     }
     
     processAlmostLockedSets() {
+        this.log("processAlmostLockedSets");
         let als = new AlmostLockedSets(this);
-        als.diagnose();
+        let queue = new DeferredQueue(this, "processing queued removals for processAlmostLockedSets");
+        als.run(queue);
+        return queue.run();
     }
     
     // a do-nothing process function
@@ -2681,7 +2722,6 @@ class Board {
             "processNakedTriplesQuads",
             // insert any options.runFirst method here
             "processPlaceHolder",
-            "processAlmostLockedSets",
             "processPointingPairsTriples",
             "processBlockRowCol",
             "processHiddenSubset",
@@ -2695,6 +2735,7 @@ class Board {
             "processRectangles",
             "processXYZWing",
             "processXWingFinned",
+            "processAlmostLockedSets",
 //            "processXCyles"
         ];
         
@@ -2775,6 +2816,8 @@ function runBoard(boardStr, name, options = {}) {
     if (opts.showSolutionsSummary) {
         console.log("\nSolutions:\n", b.solutions.join("\n "));
     }
+    
+    console.log(`Hits: ${b.buddyHits}, Misses: ${b.buddyMisses}, ${((b.buddyHits / (b.buddyHits + b.buddyMisses))* 100).toFixed(2)}%`);
     
     return opens;
 }
